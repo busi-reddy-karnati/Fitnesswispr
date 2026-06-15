@@ -1,0 +1,298 @@
+default_platform(:ios)
+
+APP_IDENTIFIER = "com.fitnesswispr.app"
+APP_NAME = "SpotRep"
+# Apple Developer Team ID; provide via env (e.g. export ASC_TEAM_ID=XXXXXXXXXX)
+TEAM_ID = ENV["ASC_TEAM_ID"]
+
+def asc_key
+  app_store_connect_api_key(
+    key_id: ENV["ASC_KEY_ID"],
+    issuer_id: ENV["ASC_ISSUER_ID"],
+    key_filepath: ENV["ASC_KEY_PATH"],
+    in_house: false
+  )
+end
+
+def spaceship_login
+  require "spaceship"
+  token = Spaceship::ConnectAPI::Token.create(
+    key_id: ENV["ASC_KEY_ID"],
+    issuer_id: ENV["ASC_ISSUER_ID"],
+    filepath: File.expand_path(ENV["ASC_KEY_PATH"])
+  )
+  Spaceship::ConnectAPI.token = token
+end
+
+platform :ios do
+  desc "Verify API credentials by listing apps"
+  lane :verify do
+    spaceship_login
+    apps = Spaceship::ConnectAPI::App.all
+    UI.success("Authenticated. Apps visible to this key:")
+    apps.each { |a| UI.message("  - #{a.name} (#{a.bundle_id})") }
+    UI.message("(no apps yet)") if apps.empty?
+  end
+
+  desc "Poll until the agreement block clears"
+  lane :poll do
+    require "spaceship"
+    require "net/http"
+    uri = URI("https://api.appstoreconnect.apple.com/v1/apps?limit=1")
+    cleared = false
+    120.times do
+      token = Spaceship::ConnectAPI::Token.create(
+        key_id: ENV["ASC_KEY_ID"],
+        issuer_id: ENV["ASC_ISSUER_ID"],
+        filepath: File.expand_path(ENV["ASC_KEY_PATH"])
+      )
+      req = Net::HTTP::Get.new(uri)
+      req["Authorization"] = "Bearer #{token.text}"
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+      ts = Time.now.strftime("%H:%M:%S")
+      if res.code == "200"
+        puts "[#{ts}] AGREEMENT_CLEARED http=200"
+        cleared = true
+        break
+      else
+        puts "[#{ts}] still_blocked http=#{res.code}"
+      end
+      sleep 120
+    end
+    puts "POLL_TIMEOUT" unless cleared
+  end
+
+  desc "Create internal beta group and attach the latest build"
+  lane :setup_group do
+    require "net/http"
+    require "json"
+    spaceship_login
+    token = Spaceship::ConnectAPI.token
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    UI.user_error!("App not found") unless app
+    group_name = "Internal Testers"
+
+    api = lambda do |method, path, body = nil|
+      uri = URI("https://api.appstoreconnect.apple.com#{path}")
+      klass = { get: Net::HTTP::Get, post: Net::HTTP::Post }[method]
+      req = klass.new(uri)
+      req["Authorization"] = "Bearer #{token.text}"
+      req["Content-Type"] = "application/json"
+      req.body = body.to_json if body
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+      [res.code.to_i, (JSON.parse(res.body) rescue {})]
+    end
+
+    # Find or create the internal group
+    group = app.get_beta_groups.find { |g| g.name == group_name }
+    group_id = group&.id
+    if group_id
+      UI.success("Beta group already exists: #{group_name}")
+    else
+      code, resp = api.call(:post, "/v1/betaGroups", {
+        data: {
+          type: "betaGroups",
+          attributes: { name: group_name, isInternalGroup: true },
+          relationships: { app: { data: { type: "apps", id: app.id } } }
+        }
+      })
+      UI.user_error!("Group create failed (#{code}): #{resp}") unless code == 201
+      group_id = resp.dig("data", "id")
+      UI.success("Created internal beta group: #{group_name} (#{group_id})")
+    end
+
+    build = Spaceship::ConnectAPI::Build.all(
+      app_id: app.id, processing_states: "VALID", limit: 1
+    ).first
+    UI.user_error!("No processed build found yet") unless build
+
+    code, resp = api.call(:post, "/v1/betaGroups/#{group_id}/relationships/builds", {
+      data: [{ type: "builds", id: build.id }]
+    })
+    if [204, 201, 200].include?(code)
+      UI.success("Attached build #{build.app_version} (#{build.version}) to '#{group_name}'")
+    else
+      UI.important("Build attach returned #{code}: #{resp}")
+    end
+
+    UI.message("GROUP_ID=#{group_id}")
+  end
+
+  desc "Add App Store Connect users as internal testers"
+  lane :add_testers do
+    require "net/http"
+    require "json"
+    spaceship_login
+    token = Spaceship::ConnectAPI.token
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    group = app.get_beta_groups.find { |g| g.name == "Internal Testers" }
+    UI.user_error!("Internal Testers group not found") unless group
+
+    uri = URI("https://api.appstoreconnect.apple.com/v1/users?limit=200")
+    req = Net::HTTP::Get.new(uri)
+    req["Authorization"] = "Bearer #{token.text}"
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+    users = JSON.parse(res.body)["data"] || []
+    UI.message("Account users: #{users.map { |u| u.dig('attributes','username') }.join(', ')}")
+
+    users.each do |u|
+      attrs = u["attributes"] || {}
+      email = attrs["username"]
+      next unless email
+      curi = URI("https://api.appstoreconnect.apple.com/v1/betaTesters")
+      creq = Net::HTTP::Post.new(curi)
+      creq["Authorization"] = "Bearer #{token.text}"
+      creq["Content-Type"] = "application/json"
+      creq.body = {
+        data: {
+          type: "betaTesters",
+          attributes: { email: email, firstName: attrs["firstName"], lastName: attrs["lastName"] },
+          relationships: { betaGroups: { data: [{ type: "betaGroups", id: group.id }] } }
+        }
+      }.to_json
+      cres = Net::HTTP.start(curi.hostname, curi.port, use_ssl: true) { |h| h.request(creq) }
+      if %w[200 201].include?(cres.code)
+        UI.success("Added internal tester: #{email}")
+      else
+        detail = (JSON.parse(cres.body)['errors'][0]['detail'] rescue cres.body)
+        UI.important("#{email}: HTTP #{cres.code} #{detail}")
+      end
+    end
+  end
+
+  desc "Upload the already-built IPA to TestFlight (internal)"
+  lane :upload do
+    key = asc_key
+    upload_to_testflight(
+      api_key: key,
+      app_identifier: APP_IDENTIFIER,
+      ipa: "/tmp/fw_build/Fitnesswispr.ipa",
+      skip_submission: true,
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
+
+  desc "Wait until the app record exists"
+  lane :wait_app do
+    found = false
+    60.times do
+      spaceship_login
+      app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+      ts = Time.now.strftime("%H:%M:%S")
+      if app
+        puts "[#{ts}] APP_RECORD_FOUND #{app.name}"
+        found = true
+        break
+      else
+        puts "[#{ts}] app_not_found_yet"
+      end
+      sleep 20
+    end
+    puts "WAIT_APP_TIMEOUT" unless found
+  end
+
+  desc "Show TestFlight status"
+  lane :status do
+    spaceship_login
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    UI.message("App: #{app.name} (#{APP_IDENTIFIER}) id=#{app.id}")
+    app.get_beta_groups.each do |g|
+      kind = g.is_internal_group ? "internal" : "external"
+      UI.message("Group: #{g.name} [#{kind}]")
+    end
+    build = Spaceship::ConnectAPI::Build.all(app_id: app.id, limit: 1).first
+    UI.message("Latest build #{build&.app_version} (#{build&.version}): processing_state=#{build&.processing_state}") if build
+  end
+
+  desc "Raw API diagnostic"
+  lane :diag do
+    require "spaceship"
+    require "json"
+    require "net/http"
+    token = Spaceship::ConnectAPI::Token.create(
+      key_id: ENV["ASC_KEY_ID"],
+      issuer_id: ENV["ASC_ISSUER_ID"],
+      filepath: File.expand_path(ENV["ASC_KEY_PATH"])
+    )
+    uri = URI("https://api.appstoreconnect.apple.com/v1/apps?limit=5")
+    req = Net::HTTP::Get.new(uri)
+    req["Authorization"] = "Bearer #{token.text}"
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |http| http.request(req) }
+    UI.message("HTTP #{res.code}")
+    UI.message(res.body)
+  end
+
+  desc "Create the app record on App Store Connect"
+  lane :create_app do
+    spaceship_login
+
+    bundle = Spaceship::ConnectAPI::BundleId.find(APP_IDENTIFIER)
+    if bundle
+      UI.success("Bundle ID already registered: #{APP_IDENTIFIER}")
+    else
+      Spaceship::ConnectAPI::BundleId.create(
+        name: "Fitnesswispr",
+        platform: Spaceship::ConnectAPI::BundleIdPlatform::IOS,
+        identifier: APP_IDENTIFIER,
+        seed_id: TEAM_ID
+      )
+      UI.success("Registered bundle ID: #{APP_IDENTIFIER}")
+    end
+
+    existing = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    if existing
+      UI.success("App already exists: #{existing.name} (#{APP_IDENTIFIER})")
+    else
+      Spaceship::ConnectAPI::App.create(
+        name: APP_NAME,
+        version_string: "1.0",
+        sku: "fitnesswispr-001",
+        primary_locale: "en-US",
+        bundle_id: APP_IDENTIFIER,
+        platforms: [Spaceship::ConnectAPI::Platform::IOS]
+      )
+      UI.success("Created app record: #{APP_NAME}")
+    end
+  end
+
+  desc "Archive + export the IPA only (no upload)"
+  lane :archive do
+    asc_key
+    build_app(
+      project: "Fitnesswispr.xcodeproj",
+      scheme: "Fitnesswispr",
+      configuration: "Release",
+      output_directory: "/tmp/fw_build",
+      output_name: "Fitnesswispr.ipa",
+      derived_data_path: "/tmp/fw_dd_release",
+      clean: true,
+      export_method: "app-store",
+      xcargs: "-allowProvisioningUpdates"
+    )
+  end
+
+  desc "Build and upload to TestFlight"
+  lane :beta do
+    key = asc_key
+    build_app(
+      project: "Fitnesswispr.xcodeproj",
+      scheme: "Fitnesswispr",
+      configuration: "Release",
+      output_directory: "/tmp/fw_build",
+      output_name: "Fitnesswispr.ipa",
+      derived_data_path: "/tmp/fw_dd_release",
+      clean: true,
+      export_method: "app-store",
+      xcargs: "-allowProvisioningUpdates"
+    )
+    upload_to_testflight(
+      api_key: key,
+      app_identifier: APP_IDENTIFIER,
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
+end

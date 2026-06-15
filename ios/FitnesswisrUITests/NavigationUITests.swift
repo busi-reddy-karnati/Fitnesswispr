@@ -21,7 +21,7 @@ final class NavigationUITests: XCTestCase {
         XCTAssertTrue(tabBar.waitForExistence(timeout: 10), "Tab bar should exist")
 
         // HOME (default)
-        XCTAssertTrue(app.staticTexts["Fitnesswispr"].waitForExistence(timeout: 5), "Home title visible")
+        XCTAssertTrue(app.staticTexts["SpotRep"].waitForExistence(timeout: 5), "Home title visible")
         snapshot(app, "01-Home")
 
         // RECORD

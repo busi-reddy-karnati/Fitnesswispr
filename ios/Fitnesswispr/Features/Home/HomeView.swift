@@ -28,7 +28,7 @@ struct HomeView: View {
                 }
                 .padding()
             }
-            .navigationTitle("Fitnesswispr")
+            .navigationTitle("SpotRep")
             .task { await vm.fetchToday() }
             .refreshable { await vm.fetchToday() }
         }
