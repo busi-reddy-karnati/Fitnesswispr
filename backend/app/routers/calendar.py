@@ -1,4 +1,5 @@
 import uuid
+from collections import Counter
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -30,8 +31,18 @@ async def get_calendar(
     result = await db.execute(stmt)
     rows = result.all()
 
-    entries = [
-        CalendarEntry(date=row.workout_date, workout_type=row.workout_type)
-        for row in rows
-    ]
+    # A day may have multiple sessions, but the calendar shows one dot per day.
+    # The day's type is the MAJORITY workout_type among that day's sessions
+    # (ties resolve to the earliest-logged type; days with only untyped
+    # sessions stay None). Rows are ordered by date, preserving day order.
+    types_by_date: dict[object, list] = {}
+    for row in rows:
+        types_by_date.setdefault(row.workout_date, []).append(row.workout_type)
+
+    entries = []
+    for day, types in types_by_date.items():
+        typed = [t for t in types if t is not None]
+        majority = Counter(typed).most_common(1)[0][0] if typed else None
+        entries.append(CalendarEntry(date=day, workout_type=majority))
+
     return CalendarResponse(dates=entries)

@@ -20,7 +20,12 @@ final class CalendarViewModel: ObservableObject {
         defer { isLoading = false }
         let url = APIEndpoints.calendar(deviceUUID: DeviceUUID.shared.id, year: currentYear, month: currentMonth)
         if let response = try? await APIClient.shared.get(url) as CalendarResponse {
-            workoutDays = Dictionary(uniqueKeysWithValues: response.dates.map { ($0.date, $0.workoutType) })
+            // A day can have multiple sessions; keep the first type per date so
+            // duplicate dates don't crash (Dictionary(uniqueKeysWithValues:) traps on dupes).
+            workoutDays = Dictionary(
+                response.dates.map { ($0.date, $0.workoutType) },
+                uniquingKeysWith: { first, _ in first }
+            )
         }
     }
 
