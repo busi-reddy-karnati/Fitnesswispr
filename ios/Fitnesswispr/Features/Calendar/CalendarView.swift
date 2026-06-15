@@ -113,6 +113,6 @@ struct CalendarView: View {
 }
 
 struct IdentifiableString: Identifiable {
-    let id = UUID()
+    var id: String { value }   // stable id so the sheet doesn't re-present on re-render
     let value: String
 }
