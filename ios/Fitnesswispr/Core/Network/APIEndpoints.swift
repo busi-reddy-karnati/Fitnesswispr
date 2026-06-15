@@ -2,11 +2,11 @@ import Foundation
 
 enum APIEndpoints {
     static var baseURL: String {
-        #if DEBUG
+        if let configured = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
+           !configured.isEmpty {
+            return configured
+        }
         return "http://localhost:8000"
-        #else
-        return Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String ?? "http://localhost:8000"
-        #endif
     }
 
     static var health: URL { URL(string: "\(baseURL)/api/v1/health")! }

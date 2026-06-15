@@ -1,6 +1,5 @@
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -26,5 +25,5 @@ class DeviceContextResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     device_uuid: uuid.UUID | None = None
-    last_body_weight_lbs: Decimal | None = None
+    last_body_weight_lbs: float | None = None
     last_updated: datetime | None = None

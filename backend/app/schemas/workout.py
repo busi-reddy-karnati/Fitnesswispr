@@ -1,6 +1,5 @@
 import uuid
 from datetime import date, datetime
-from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -11,7 +10,7 @@ class ExerciseSetSchema(BaseModel):
     set_id: uuid.UUID | None = None
     set_number: int
     reps: int | None = None
-    weight: Decimal | None = None
+    weight: float | None = None
     weight_unit: str = "lbs"
     duration_seconds: int | None = None
 
@@ -38,7 +37,7 @@ class WorkoutSessionSchema(BaseModel):
     updated_at: datetime | None = None
     source: str = "voice"
     raw_transcript: str | None = None
-    body_weight_lbs: Decimal | None = None
+    body_weight_lbs: float | None = None
     workout_type: str | None = None
     cardio_notes: str | None = None
     session_notes: str | None = None
