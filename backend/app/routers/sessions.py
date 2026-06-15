@@ -2,7 +2,7 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -38,9 +38,24 @@ async def _get_session_or_404(
 async def create_session(
     body: CreateSessionRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
+    x_device_uuid: Annotated[str | None, Header()] = None,
 ) -> WorkoutSessionSchema:
+    # device_uuid may come from the request body or the X-Device-UUID header.
+    # Normalise to canonical lowercase so it matches how GET endpoints query
+    # (FastAPI parses query/path UUIDs to uuid.UUID, whose str() is lowercase).
+    raw_device = body.device_uuid or x_device_uuid
+    if raw_device is None:
+        raise HTTPException(
+            status_code=422,
+            detail="device_uuid is required (in body or X-Device-UUID header)",
+        )
+    try:
+        device_uuid = str(uuid.UUID(str(raw_device)))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="invalid device_uuid")
+
     workout = WorkoutSession(
-        device_uuid=str(body.device_uuid),
+        device_uuid=str(device_uuid),
         workout_date=body.workout_date,
         source=body.source,
         raw_transcript=body.raw_transcript,
@@ -79,12 +94,12 @@ async def create_session(
     # UPSERT device_context if body_weight_lbs is provided
     if body.body_weight_lbs is not None:
         result = await db.execute(
-            select(DeviceContext).where(DeviceContext.device_uuid == str(body.device_uuid))
+            select(DeviceContext).where(DeviceContext.device_uuid == str(device_uuid))
         )
         ctx = result.scalars().first()
         if ctx is None:
             ctx = DeviceContext(
-                device_uuid=str(body.device_uuid),
+                device_uuid=str(device_uuid),
                 last_body_weight_lbs=body.body_weight_lbs,
             )
             db.add(ctx)

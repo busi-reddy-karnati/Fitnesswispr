@@ -30,7 +30,7 @@ class ParseRequest(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    device_uuid: uuid.UUID
+    device_uuid: uuid.UUID | None = None
     workout_date: date
     source: str = "voice"
     raw_transcript: str | None = None
