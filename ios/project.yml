@@ -34,8 +34,9 @@ targets:
           - UIInterfaceOrientationPortrait
         NSSpeechRecognitionUsageDescription: "Fitnesswispr uses speech recognition to log your workouts by voice."
         NSMicrophoneUsageDescription: "Fitnesswispr needs the microphone to record your spoken workout."
-        API_BASE_URL: "http://localhost:8055"
+        API_BASE_URL: "http://52.54.56.116:8000"
         NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
           NSAllowsLocalNetworking: true
 
   FitnesswisrUITests:
