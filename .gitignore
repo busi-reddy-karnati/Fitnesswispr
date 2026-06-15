@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# Secrets / env
+.env
+*.pem
+
+# macOS
+.DS_Store
+
+# Xcode / iOS
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+build/
+DerivedData/
+
+# Docker
+docker/config.json
