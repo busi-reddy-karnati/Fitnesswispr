@@ -9,7 +9,6 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = "001"
@@ -26,11 +25,10 @@ def upgrade() -> None:
         "workout_sessions",
         sa.Column(
             "session_id",
-            postgresql.UUID(as_uuid=True),
+            sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
-        sa.Column("device_uuid", postgresql.UUID(as_uuid=True), nullable=False),
+        sa.Column("device_uuid", sa.String(36), nullable=False),
         sa.Column("workout_date", sa.Date(), nullable=False),
         sa.Column(
             "created_at",
@@ -65,13 +63,12 @@ def upgrade() -> None:
         "exercises",
         sa.Column(
             "exercise_id",
-            postgresql.UUID(as_uuid=True),
+            sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "session_id",
-            postgresql.UUID(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey(
                 "workout_sessions.session_id",
                 ondelete="CASCADE",
@@ -93,13 +90,12 @@ def upgrade() -> None:
         "exercise_sets",
         sa.Column(
             "set_id",
-            postgresql.UUID(as_uuid=True),
+            sa.String(36),
             primary_key=True,
-            server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "exercise_id",
-            postgresql.UUID(as_uuid=True),
+            sa.String(36),
             sa.ForeignKey(
                 "exercises.exercise_id",
                 ondelete="CASCADE",
@@ -121,7 +117,7 @@ def upgrade() -> None:
         "device_context",
         sa.Column(
             "device_uuid",
-            postgresql.UUID(as_uuid=True),
+            sa.String(36),
             primary_key=True,
         ),
         sa.Column("last_body_weight_lbs", sa.Numeric(5, 1), nullable=True),

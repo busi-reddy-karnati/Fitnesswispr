@@ -17,7 +17,7 @@ struct CalendarView: View {
             .navigationTitle("Calendar")
             .task { await vm.fetchCalendar() }
             .sheet(item: Binding(
-                get: { vm.selectedDate.map { IdentifiableString($0) } },
+                get: { vm.selectedDate.map { IdentifiableString(value: $0) } },
                 set: { _ in vm.selectedDate = nil }
             )) { item in
                 DayWorkoutSheet(dateStr: item.value, sessions: vm.selectedSessions)
