@@ -16,6 +16,7 @@
 		28605135C7E48D7A0A2C597E /* SessionDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19537DA3736559BD621532B7 /* SessionDetailView.swift */; };
 		307BF8CF5CB2C4C804F4F206 /* FitnesswisrApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA09AE85B372090AE47BA57 /* FitnesswisrApp.swift */; };
 		35CDEAA76E851D09AC6E0BFE /* ExerciseConfirmCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = F7802424EE796E37A758CB51 /* ExerciseConfirmCard.swift */; };
+		3B27D1399C462C9FA48DC5BB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1517A342BE663A99C897F725 /* Assets.xcassets */; };
 		42825A72D44220257D7E93AA /* NetworkError.swift in Sources */ = {isa = PBXBuildFile; fileRef = F613A250B33ECEE20D172ABA /* NetworkError.swift */; };
 		4D8047E249B09CCF12455051 /* HistoryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F8089FF089ACDED92D40802 /* HistoryViewModel.swift */; };
 		5E1856D820943F0A73C60ED5 /* WorkoutTypeBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = D8E76679488BF2E4A1F81435 /* WorkoutTypeBadge.swift */; };
@@ -63,6 +64,7 @@
 		07F901CC0A319FF7CD666DFC /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
 		0885DBD5E0D21E96DCED7AB3 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		1066773BFBDD5D0F072DE4B8 /* WaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WaveformView.swift; sourceTree = "<group>"; };
+		1517A342BE663A99C897F725 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		16EB6C523A3817FB22107F8B /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		19537DA3736559BD621532B7 /* SessionDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionDetailView.swift; sourceTree = "<group>"; };
 		1EF8CCD3C8FEF16C3610C465 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
@@ -133,6 +135,7 @@
 		1477E7413A4BE5F5642E4D35 /* Fitnesswispr */ = {
 			isa = PBXGroup;
 			children = (
+				1517A342BE663A99C897F725 /* Assets.xcassets */,
 				BFA09AE85B372090AE47BA57 /* FitnesswisrApp.swift */,
 				2A128DC03733060A343B10AC /* Info.plist */,
 				C791A62946731BA920FBA145 /* Components */,
@@ -288,6 +291,7 @@
 			buildConfigurationList = 14D0A96993566B12E5FF7DC0 /* Build configuration list for PBXNativeTarget "Fitnesswispr" */;
 			buildPhases = (
 				A8D288BA9D7846DEC27C925B /* Sources */,
+				3D027C98D4DB025B6E6EB1EB /* Resources */,
 			);
 			buildRules = (
 			);
@@ -336,7 +340,6 @@
 				};
 			};
 			buildConfigurationList = 28D5A633ED19C8511C6E49C3 /* Build configuration list for PBXProject "Fitnesswispr" */;
-			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -346,6 +349,7 @@
 			mainGroup = 5DC1774DCA11D7FCE14E2BE2;
 			minimizedProjectReferenceProxies = 1;
 			preferredProjectObjectVersion = 77;
+			productRefGroup = 8F4880163B3FEB6C81C8FC61 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -354,6 +358,17 @@
 			);
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		3D027C98D4DB025B6E6EB1EB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3B27D1399C462C9FA48DC5BB /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		2C504F0FBB822B7B10E99D86 /* Sources */ = {
@@ -446,7 +461,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Fitnesswispr/Info.plist;
@@ -607,7 +622,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGNING_REQUIRED = NO;
 				CODE_SIGN_IDENTITY = "";
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Fitnesswispr/Info.plist;

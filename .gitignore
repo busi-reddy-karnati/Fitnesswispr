@@ -19,5 +19,11 @@ ios/**/*.xcuserstate
 build/
 DerivedData/
 
+# fastlane
+ios/fastlane/report.xml
+ios/fastlane/Preview.html
+ios/fastlane/test_output/
+*.p8
+
 # Docker
 docker/config.json
