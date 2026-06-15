@@ -15,14 +15,13 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fitnesswispr.app
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "2"
+        CURRENT_PROJECT_VERSION: "3"
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: Fitnesswispr/Info.plist
-        DEVELOPMENT_TEAM: ""
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: WAHLKW2N4G
+        CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Fitnesswispr/Info.plist
