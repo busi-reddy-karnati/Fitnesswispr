@@ -273,6 +273,220 @@ platform :ios do
     )
   end
 
+  # ---- Public (external) TestFlight beta -------------------------------------
+  #
+  # Required env (personal / Apple-required info):
+  #   BETA_FEEDBACK_EMAIL   where tester feedback is sent
+  #   BETA_CONTACT_FIRST    review contact first name
+  #   BETA_CONTACT_LAST     review contact last name
+  #   BETA_CONTACT_EMAIL    review contact email
+  #   BETA_CONTACT_PHONE    review contact phone (e.g. +1 555 123 4567)
+  #   BETA_PRIVACY_URL      public privacy policy URL
+  # Optional:
+  #   BETA_PUBLIC_LIMIT     max public-link testers (default 1000)
+  #   BETA_MARKETING_URL    marketing/website URL
+  #   BETA_GROUP_NAME       external group name (default "Public Beta")
+  BETA_DESCRIPTION = <<~DESC.strip
+    SpotRep is the fastest way to log your lifts. Record a set by voice
+    ("bench 3x10 at 135"), by typing, or by importing a spreadsheet or photo of
+    an old log. See your training consistency at a glance, tap a muscle to see
+    what to train next, and share progress with a spotter who can view — or log
+    on your behalf. No account required; optional Sign in with Apple backs up and
+    syncs your data.
+  DESC
+
+  BETA_WHATS_TO_TEST = <<~TEST.strip
+    Thanks for testing SpotRep! Please try:
+    - Logging a workout by voice, by typing, and by importing a spreadsheet/photo
+    - Editing/deleting a workout and changing a workout's date
+    - The consistency heatmap and tapping a day / a muscle group
+    - Adding a spotter (share invite), then revoking / stopping spotting
+    - Exporting your workouts to CSV/Excel
+    Send feedback via TestFlight's screenshot tool, or email us.
+  TEST
+
+  desc "Set up the external (public) TestFlight group and submit for Beta App Review"
+  lane :public_beta do
+    require "net/http"
+    require "json"
+
+    missing = %w[BETA_FEEDBACK_EMAIL BETA_CONTACT_FIRST BETA_CONTACT_LAST
+                 BETA_CONTACT_EMAIL BETA_CONTACT_PHONE BETA_PRIVACY_URL]
+              .reject { |k| ENV[k].to_s.strip != "" }
+    UI.user_error!("Missing required env: #{missing.join(', ')}") unless missing.empty?
+
+    group_name = ENV["BETA_GROUP_NAME"] || "Public Beta"
+    public_limit = (ENV["BETA_PUBLIC_LIMIT"] || "1000").to_i
+
+    spaceship_login
+    token = Spaceship::ConnectAPI.token
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    UI.user_error!("App not found") unless app
+
+    api = lambda do |method, path, body = nil|
+      uri = URI("https://api.appstoreconnect.apple.com#{path}")
+      klass = { get: Net::HTTP::Get, post: Net::HTTP::Post,
+                patch: Net::HTTP::Patch, delete: Net::HTTP::Delete }[method]
+      req = klass.new(uri)
+      req["Authorization"] = "Bearer #{token.text}"
+      req["Content-Type"] = "application/json"
+      req.body = body.to_json if body
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+      [res.code.to_i, (JSON.parse(res.body) rescue {})]
+    end
+
+    # Latest processed build.
+    build = Spaceship::ConnectAPI::Build.all(
+      app_id: app.id, processing_states: "VALID", limit: 1
+    ).first
+    UI.user_error!("No processed (VALID) build found yet") unless build
+    UI.message("Using build #{build.app_version} (#{build.version})")
+
+    # 1) External group with a public link.
+    code, resp = api.call(:get, "/v1/apps/#{app.id}/betaGroups?limit=200")
+    group = (resp["data"] || []).find { |g| g.dig("attributes", "name") == group_name }
+    group_attrs = {
+      name: group_name,
+      publicLinkEnabled: true,
+      publicLinkLimitEnabled: true,
+      publicLinkLimit: public_limit,
+      feedbackEnabled: true
+    }
+    if group
+      gid = group["id"]
+      api.call(:patch, "/v1/betaGroups/#{gid}", {
+        data: { type: "betaGroups", id: gid, attributes: group_attrs }
+      })
+      UI.success("Updated external group '#{group_name}' (#{gid})")
+    else
+      code, resp = api.call(:post, "/v1/betaGroups", {
+        data: {
+          type: "betaGroups",
+          attributes: group_attrs.merge(isInternalGroup: false),
+          relationships: { app: { data: { type: "apps", id: app.id } } }
+        }
+      })
+      UI.user_error!("Group create failed (#{code}): #{resp}") unless code == 201
+      gid = resp.dig("data", "id")
+      UI.success("Created external group '#{group_name}' (#{gid})")
+    end
+
+    # 2) Beta App Review contact info.
+    code, resp = api.call(:get, "/v1/apps/#{app.id}/betaAppReviewDetail")
+    detail_id = resp.dig("data", "id")
+    review_attrs = {
+      contactFirstName: ENV["BETA_CONTACT_FIRST"],
+      contactLastName: ENV["BETA_CONTACT_LAST"],
+      contactEmail: ENV["BETA_CONTACT_EMAIL"],
+      contactPhone: ENV["BETA_CONTACT_PHONE"],
+      demoAccountRequired: false
+    }
+    if detail_id
+      api.call(:patch, "/v1/betaAppReviewDetails/#{detail_id}", {
+        data: { type: "betaAppReviewDetails", id: detail_id, attributes: review_attrs }
+      })
+      UI.success("Set Beta App Review contact info")
+    else
+      UI.important("No betaAppReviewDetail found to update")
+    end
+
+    # 3) Test Information (feedback email, description, privacy URL) for en-US.
+    code, resp = api.call(:get, "/v1/apps/#{app.id}/betaAppLocalizations?limit=200")
+    loc = (resp["data"] || []).find { |l| l.dig("attributes", "locale") == "en-US" }
+    loc_attrs = {
+      feedbackEmail: ENV["BETA_FEEDBACK_EMAIL"],
+      description: BETA_DESCRIPTION,
+      privacyPolicyUrl: ENV["BETA_PRIVACY_URL"],
+      marketingUrl: ENV["BETA_MARKETING_URL"]
+    }.reject { |_, v| v.nil? }
+    if loc
+      lid = loc["id"]
+      api.call(:patch, "/v1/betaAppLocalizations/#{lid}", {
+        data: { type: "betaAppLocalizations", id: lid, attributes: loc_attrs }
+      })
+      UI.success("Updated Test Information (en-US)")
+    else
+      api.call(:post, "/v1/betaAppLocalizations", {
+        data: {
+          type: "betaAppLocalizations",
+          attributes: loc_attrs.merge(locale: "en-US"),
+          relationships: { app: { data: { type: "apps", id: app.id } } }
+        }
+      })
+      UI.success("Created Test Information (en-US)")
+    end
+
+    # 4) "What to Test" notes for this build (en-US).
+    code, resp = api.call(:get, "/v1/builds/#{build.id}/betaBuildLocalizations?limit=200")
+    bloc = (resp["data"] || []).find { |l| l.dig("attributes", "locale") == "en-US" }
+    if bloc
+      bid = bloc["id"]
+      api.call(:patch, "/v1/betaBuildLocalizations/#{bid}", {
+        data: { type: "betaBuildLocalizations", id: bid, attributes: { whatsNew: BETA_WHATS_TO_TEST } }
+      })
+    else
+      api.call(:post, "/v1/betaBuildLocalizations", {
+        data: {
+          type: "betaBuildLocalizations",
+          attributes: { locale: "en-US", whatsNew: BETA_WHATS_TO_TEST },
+          relationships: { build: { data: { type: "builds", id: build.id } } }
+        }
+      })
+    end
+    UI.success("Set 'What to Test' notes")
+
+    # 5) Attach the build to the external group.
+    code, resp = api.call(:post, "/v1/betaGroups/#{gid}/relationships/builds", {
+      data: [{ type: "builds", id: build.id }]
+    })
+    UI.success("Attached build to '#{group_name}' (#{code})")
+
+    # 6) Submit the build for Beta App Review.
+    code, resp = api.call(:post, "/v1/betaAppReviewSubmissions", {
+      data: {
+        type: "betaAppReviewSubmissions",
+        relationships: { build: { data: { type: "builds", id: build.id } } }
+      }
+    })
+    if code == 201
+      UI.success("Submitted build #{build.version} for Beta App Review 🎉")
+    elsif code == 409
+      UI.important("Build already submitted / in review (409)")
+    else
+      UI.important("Beta review submission returned #{code}: #{resp}")
+    end
+
+    # 7) Print the public link (may be nil until review approves).
+    code, resp = api.call(:get, "/v1/betaGroups/#{gid}")
+    link = resp.dig("data", "attributes", "publicLink")
+    UI.message("PUBLIC_LINK=#{link || '(available after Beta App Review approval)'}")
+  end
+
+  desc "Print the public TestFlight link and review status"
+  lane :public_beta_status do
+    require "net/http"
+    require "json"
+    spaceship_login
+    token = Spaceship::ConnectAPI.token
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+    group_name = ENV["BETA_GROUP_NAME"] || "Public Beta"
+    uri = URI("https://api.appstoreconnect.apple.com/v1/apps/#{app.id}/betaGroups?limit=200")
+    req = Net::HTTP::Get.new(uri)
+    req["Authorization"] = "Bearer #{token.text}"
+    res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+    data = (JSON.parse(res.body)["data"] rescue [])
+    g = data.find { |x| x.dig("attributes", "name") == group_name }
+    if g
+      a = g["attributes"]
+      UI.message("Group '#{group_name}': publicLinkEnabled=#{a['publicLinkEnabled']} limit=#{a['publicLinkLimit']}")
+      UI.message("PUBLIC_LINK=#{a['publicLink'] || '(pending Beta App Review approval)'}")
+    else
+      UI.important("External group '#{group_name}' not found — run `fastlane public_beta` first")
+    end
+    build = Spaceship::ConnectAPI::Build.all(app_id: app.id, limit: 1).first
+    UI.message("Latest build #{build&.app_version} (#{build&.version}): #{build&.processing_state}")
+  end
+
   desc "Build and upload to TestFlight"
   lane :beta do
     key = asc_key
