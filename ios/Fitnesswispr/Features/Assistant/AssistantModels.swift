@@ -14,6 +14,9 @@ struct ChatMessage: Identifiable {
         case workoutDraft(ParsedSession)
         /// A short confirmation that a workout was saved.
         case saved(String)
+        /// The assistant needs one more detail before it can log the workout,
+        /// and offers quick options the user can tap (or type their own).
+        case clarify(Clarification)
         /// The assistant is thinking.
         case thinking
     }
@@ -22,6 +25,29 @@ struct ChatMessage: Identifiable {
     let author: Author
     var body: Body
     let timestamp = Date()
+}
+
+/// A request for a missing detail needed to log a workout. The user can tap one
+/// of `options` or type their own answer.
+///
+/// - `.exercise` answers are re-parsed (prepended to `pendingText`).
+/// - `.weight` / `.reps` / `.sets` answers are numbers applied directly to `draft`.
+struct Clarification {
+    enum Kind {
+        case exercise
+        case weight
+        case reps
+        case sets
+    }
+
+    let messageID: UUID
+    let kind: Kind
+    let prompt: String
+    let options: [String]
+    /// Original text to re-parse with the answer (used by `.exercise`).
+    let pendingText: String
+    /// Draft to fill the missing number into (used by `.weight` / `.reps` / `.sets`).
+    let draft: ParsedSession?
 }
 
 struct AssistantChatRequest: Encodable {

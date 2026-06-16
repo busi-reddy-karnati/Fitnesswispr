@@ -95,7 +95,8 @@ struct AssistantView: View {
                         MessageRow(
                             message: message,
                             onSave: { parsed, date in vm.saveDraft(parsed, date: date, draftID: message.id) },
-                            onDiscard: { vm.discardDraft(message.id) }
+                            onDiscard: { vm.discardDraft(message.id) },
+                            onChoose: { option, clarification in vm.chooseClarification(option, clarification) }
                         )
                         .id(message.id)
                     }
@@ -256,6 +257,7 @@ private struct MessageRow: View {
     let message: ChatMessage
     let onSave: (ParsedSession, Date) -> Void
     let onDiscard: () -> Void
+    let onChoose: (String, Clarification) -> Void
 
     var body: some View {
         switch message.body {
@@ -276,6 +278,8 @@ private struct MessageRow: View {
             }
         case .workoutDraft(let parsed):
             WorkoutDraftCard(parsed: parsed, onSave: onSave, onDiscard: onDiscard)
+        case .clarify(let clarification):
+            ClarifyCard(clarification: clarification) { onChoose($0, clarification) }
         }
     }
 
@@ -378,6 +382,52 @@ private struct WorkoutDraftCard: View {
 
     private func format(_ value: Double) -> String {
         value == value.rounded() ? String(Int(value)) : String(value)
+    }
+}
+
+// MARK: - Clarification card
+
+private struct ClarifyCard: View {
+    let clarification: Clarification
+    let onChoose: (String) -> Void
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 10) {
+                Text(clarification.prompt)
+                    .font(.body)
+                    .foregroundColor(.primary)
+
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 104), spacing: 8)],
+                    alignment: .leading,
+                    spacing: 8
+                ) {
+                    ForEach(clarification.options, id: \.self) { option in
+                        Button { onChoose(option) } label: {
+                            Text(option)
+                                .font(.subheadline.weight(.medium))
+                                .lineLimit(1)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .frame(maxWidth: .infinity)
+                                .background(Color.appAccent.opacity(0.12))
+                                .foregroundColor(.appAccent)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.appAccent.opacity(0.25), lineWidth: 1)
+            )
+            Spacer(minLength: 20)
+        }
     }
 }
 

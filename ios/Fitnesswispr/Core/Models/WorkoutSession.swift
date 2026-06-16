@@ -52,10 +52,23 @@ struct ParsedSession: Codable {
     var exercises: [Exercise]
 }
 
-/// Partial update for a session. Sending `exercises` replaces the session's
-/// exercise list, which we use to remove a single exercise.
+/// Partial update for a session. Only the fields that are set are sent, so the
+/// backend (which uses `exclude_unset`) leaves everything else untouched.
+/// `exercises` replaces the session's exercise list (used to remove one);
+/// `workoutDate` moves the workout to a different day.
 struct UpdateSessionRequest: Encodable {
-    let exercises: [Exercise]
+    var workoutDate: String? = nil
+    var exercises: [Exercise]? = nil
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(workoutDate, forKey: .workoutDate)
+        try c.encodeIfPresent(exercises, forKey: .exercises)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case workoutDate, exercises
+    }
 }
 
 struct CreateSessionRequest: Encodable {

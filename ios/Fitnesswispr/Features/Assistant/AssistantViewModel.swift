@@ -11,6 +11,19 @@ final class AssistantViewModel: ObservableObject {
     let speech = SpeechRecognizer()
     private let preferences: UserPreferences
     private var bodyWeightLbs: Double?
+    /// Exercises the user has logged recently, offered as quick options when we
+    /// need to ask which exercise a set belongs to.
+    private var recentExercises: [String] = []
+    /// Most-frequent weights the user has used, per exercise (lowercased name).
+    private var weightsByExercise: [String: [Double]] = [:]
+    /// Most-frequent set counts and reps across the user's history.
+    private var frequentSetCounts: [Int] = []
+    private var frequentReps: [Int] = []
+    /// Set while we're waiting for the user to supply a missing detail.
+    private var pendingClarification: Clarification?
+    /// Fields we've already asked about for the workout currently being logged,
+    /// so we never ask twice (and "Bodyweight" answers aren't re-prompted).
+    private var askedFields: Set<Clarification.Kind> = []
 
     private var targetUUID: String { ProfileStore.shared.activeID }
 
@@ -36,6 +49,48 @@ final class AssistantViewModel: ObservableObject {
                 bodyWeightLbs = ctx.lastBodyWeightLbs
             }
         }
+        Task { await loadHistory() }
+    }
+
+    /// Pull recent sessions to power quick-pick options: recent exercise names,
+    /// the weights used per exercise, and the user's typical set/rep counts.
+    private func loadHistory() async {
+        let end = Date()
+        let start = Calendar.current.date(byAdding: .day, value: -120, to: end) ?? end
+        let url = APIEndpoints.sessions(
+            deviceUUID: targetUUID,
+            startDate: start.apiDateString,
+            endDate: end.apiDateString,
+            limit: 50
+        )
+        guard let sessions: [WorkoutSession] = try? await APIClient.shared.get(url) else { return }
+
+        var nameOrder: [String] = []
+        var nameSeen = Set<String>()
+        var weightTally: [String: [Double: Int]] = [:]
+        var setTally: [Int: Int] = [:]
+        var repTally: [Int: Int] = [:]
+
+        for session in sessions {              // backend returns most-recent first
+            for ex in session.exercises {
+                let name = ex.name.trimmingCharacters(in: .whitespaces)
+                guard !name.isEmpty else { continue }
+                let key = name.lowercased()
+                if nameSeen.insert(key).inserted { nameOrder.append(name) }
+                setTally[ex.sets.count, default: 0] += 1
+                for s in ex.sets {
+                    if let w = s.weight { weightTally[key, default: [:]][w, default: 0] += 1 }
+                    if let r = s.reps { repTally[r, default: 0] += 1 }
+                }
+            }
+        }
+
+        recentExercises = Array(nameOrder.prefix(8))
+        weightsByExercise = weightTally.mapValues { tally in
+            tally.sorted { $0.value > $1.value }.map(\.key)
+        }
+        frequentSetCounts = setTally.sorted { $0.value > $1.value }.map(\.key)
+        frequentReps = repTally.sorted { $0.value > $1.value }.map(\.key)
     }
 
     // MARK: - Sending
@@ -49,17 +104,61 @@ final class AssistantViewModel: ObservableObject {
 
     func send(_ text: String) {
         messages.append(ChatMessage(author: .user, body: .text(text)))
+
+        // If we just asked for a missing detail, treat this as the answer —
+        // unless the user pivoted to asking a question instead.
+        if let pending = pendingClarification, !looksLikeQuestion(text) {
+            pendingClarification = nil
+            freezeClarification(pending)
+            resolveClarification(pending, answer: text)
+            return
+        }
+        pendingClarification = nil
+        askedFields = []   // a fresh workout — clear what we've asked about
+
         let thinkingID = appendThinking()
         isBusy = true
-
         Task {
             if looksLikeQuestion(text) {
                 await answer(text, replacing: thinkingID)
             } else {
-                await logWorkout(text, replacing: thinkingID, allowQuestionFallback: true)
+                await logWorkout(text, replacing: thinkingID, allowQuestionFallback: true, allowClarify: true)
             }
             isBusy = false
         }
+    }
+
+    /// The user tapped one of the suggested options on a clarification card.
+    func chooseClarification(_ option: String, _ clarification: Clarification) {
+        messages.append(ChatMessage(author: .user, body: .text(option)))
+        pendingClarification = nil
+        freezeClarification(clarification)
+        resolveClarification(clarification, answer: option)
+    }
+
+    /// Apply the user's answer to a pending clarification: re-parse for a missing
+    /// exercise name, or fill the chosen number into the draft for weight/reps/sets.
+    private func resolveClarification(_ clarification: Clarification, answer: String) {
+        switch clarification.kind {
+        case .exercise:
+            let combined = "\(answer) \(clarification.pendingText)"
+            let thinkingID = appendThinking()
+            isBusy = true
+            Task {
+                await logWorkout(combined, replacing: thinkingID, allowQuestionFallback: false)
+                isBusy = false
+            }
+        case .weight, .reps, .sets:
+            guard var draft = clarification.draft else { return }
+            apply(field: clarification.kind, answer: answer, to: &draft)
+            present(draft, in: appendThinking())
+        }
+    }
+
+    /// Replace the interactive clarification card with its plain prompt so its
+    /// buttons can no longer be tapped once answered.
+    private func freezeClarification(_ clarification: Clarification) {
+        replace(clarification.messageID, with: .text(clarification.prompt))
     }
 
     // MARK: - Routing
@@ -83,7 +182,12 @@ final class AssistantViewModel: ObservableObject {
 
     // MARK: - Logging
 
-    private func logWorkout(_ text: String, replacing id: UUID, allowQuestionFallback: Bool) async {
+    private func logWorkout(
+        _ text: String,
+        replacing id: UUID,
+        allowQuestionFallback: Bool,
+        allowClarify: Bool = false
+    ) async {
         let context = ParseContext(bodyWeightLbs: bodyWeightLbs)
         let req = ParseRequest(
             transcript: text,
@@ -94,24 +198,184 @@ final class AssistantViewModel: ObservableObject {
         do {
             let parsed: ParsedSession = try await APIClient.shared.post(APIEndpoints.parse, body: req)
             if parsed.exercises.isEmpty {
-                if allowQuestionFallback {
+                if allowClarify, looksLikeWorkout(text) {
+                    askExerciseClarification(replacing: id, pendingText: text)
+                } else if allowQuestionFallback {
                     await answer(text, replacing: id)
                 } else {
                     replace(id, with: .text("I couldn't find a workout in that. Try “incline press 3x8 at 50”."))
                 }
                 return
             }
-            replace(id, with: .workoutDraft(parsed))
-        } catch NetworkError.httpError(422, _) {
-            // Not a parseable workout — treat as a question instead.
-            if allowQuestionFallback {
+            present(parsed, in: id)
+        } catch NetworkError.httpError(422, let data) {
+            let detail = decodeDetail(data)
+            // A workout that's only missing its exercise name — ask, don't give up.
+            if allowClarify, looksLikeWorkout(text), needsExerciseName(detail) {
+                askExerciseClarification(replacing: id, pendingText: text)
+            } else if allowQuestionFallback {
                 await answer(text, replacing: id)
             } else {
-                replace(id, with: .text("I couldn't parse that as a workout."))
+                replace(id, with: .text(detail ?? "I couldn't parse that as a workout."))
             }
         } catch {
             replace(id, with: .text("Something went wrong: \(error.localizedDescription)"))
         }
+    }
+
+    /// Show the draft for confirmation, or — if a key detail is still missing —
+    /// ask for it first with quick options. Fields are asked one at a time.
+    private func present(_ draft: ParsedSession, in slotID: UUID) {
+        guard let field = firstMissingField(draft) else {
+            replace(slotID, with: .workoutDraft(draft))
+            return
+        }
+        let clarification = Clarification(
+            messageID: slotID,
+            kind: field,
+            prompt: prompt(for: field, draft: draft),
+            options: options(for: field, draft: draft),
+            pendingText: "",
+            draft: draft
+        )
+        askedFields.insert(field)
+        replace(slotID, with: .clarify(clarification))
+        pendingClarification = clarification
+    }
+
+    /// The first detail that's missing from the (first) exercise, in priority
+    /// order, skipping anything we've already asked about for this workout.
+    private func firstMissingField(_ draft: ParsedSession) -> Clarification.Kind? {
+        guard let ex = draft.exercises.first, !ex.sets.isEmpty else { return nil }
+        if ex.sets.contains(where: { $0.durationSeconds != nil }) { return nil } // timed hold
+        let hasWeight = ex.sets.contains { $0.weight != nil }
+        let hasReps = ex.sets.contains { $0.reps != nil }
+        if !askedFields.contains(.weight), !hasWeight, !isBodyweight(ex.name) { return .weight }
+        if !askedFields.contains(.reps), !hasReps { return .reps }
+        if !askedFields.contains(.sets), ex.sets.count == 1 { return .sets }
+        return nil
+    }
+
+    private func prompt(for field: Clarification.Kind, draft: ParsedSession?) -> String {
+        let name = draft?.exercises.first?.name ?? "that"
+        switch field {
+        case .exercise: return "Got the sets — which exercise was that? Tap one or type it."
+        case .weight:   return "What weight for \(name)? Tap one or type it."
+        case .reps:     return "How many reps? Tap one or type it."
+        case .sets:     return "How many sets? Tap one or type it."
+        }
+    }
+
+    private func options(for field: Clarification.Kind, draft: ParsedSession?) -> [String] {
+        switch field {
+        case .exercise:
+            return recentExercises.isEmpty
+                ? ["Bench Press", "Squat", "Deadlift", "Overhead Press", "Lat Pulldown"]
+                : Array(recentExercises.prefix(6))
+        case .weight:
+            let unit = draft?.exercises.first?.sets.first?.weightUnit ?? preferences.unitPreference
+            let key = (draft?.exercises.first?.name ?? "").lowercased()
+            var opts = (weightsByExercise[key] ?? []).prefix(3).map { "\(formatNumber($0)) \(unit)" }
+            opts.append("Bodyweight")
+            return opts
+        case .reps:
+            let freq = frequentReps.filter { $0 > 0 }.prefix(3).map(String.init)
+            return freq.isEmpty ? ["8", "10", "12"] : Array(freq)
+        case .sets:
+            let freq = frequentSetCounts.filter { $0 > 1 }.prefix(3).map(String.init)
+            return freq.isEmpty ? ["3", "4", "5"] : Array(freq)
+        }
+    }
+
+    /// Apply a numeric clarification answer to the draft's first exercise.
+    private func apply(field: Clarification.Kind, answer: String, to draft: inout ParsedSession) {
+        guard !draft.exercises.isEmpty else { return }
+        let number = firstNumber(in: answer)
+        switch field {
+        case .weight:
+            guard let w = number else { return } // e.g. "Bodyweight" → leave unweighted
+            let unit = draft.exercises[0].sets.first?.weightUnit ?? preferences.unitPreference
+            for i in draft.exercises[0].sets.indices {
+                draft.exercises[0].sets[i].weight = w
+                draft.exercises[0].sets[i].weightUnit = unit
+            }
+        case .reps:
+            guard let r = number else { return }
+            for i in draft.exercises[0].sets.indices {
+                draft.exercises[0].sets[i].reps = Int(r)
+            }
+        case .sets:
+            guard let n = number, n >= 1 else { return }
+            let count = min(Int(n), 20)
+            let template = draft.exercises[0].sets.first
+            draft.exercises[0].sets = (1...count).map { i in
+                ExerciseSet(
+                    setNumber: i,
+                    reps: template?.reps,
+                    weight: template?.weight,
+                    weightUnit: template?.weightUnit ?? preferences.unitPreference,
+                    durationSeconds: template?.durationSeconds
+                )
+            }
+        case .exercise:
+            break
+        }
+    }
+
+    /// Exercises that are normally done without external weight, so we shouldn't
+    /// nag for a weight value.
+    private func isBodyweight(_ name: String) -> Bool {
+        let n = name.lowercased()
+        let bodyweight = [
+            "push up", "pushup", "pull up", "pullup", "chin up", "chinup",
+            "dip", "plank", "sit up", "situp", "crunch", "burpee",
+            "mountain climber", "leg raise", "hanging"
+        ]
+        return bodyweight.contains { n.contains($0) }
+    }
+
+    private func firstNumber(in text: String) -> Double? {
+        guard let range = text.range(of: #"\d+(\.\d+)?"#, options: .regularExpression) else { return nil }
+        return Double(text[range])
+    }
+
+    private func formatNumber(_ value: Double) -> String {
+        value == value.rounded() ? String(Int(value)) : String(value)
+    }
+
+    /// Turn the in-flight "thinking" bubble into a question asking which exercise
+    /// the sets belong to.
+    private func askExerciseClarification(replacing id: UUID, pendingText: String) {
+        let clarification = Clarification(
+            messageID: id,
+            kind: .exercise,
+            prompt: prompt(for: .exercise, draft: nil),
+            options: options(for: .exercise, draft: nil),
+            pendingText: pendingText,
+            draft: nil
+        )
+        askedFields.insert(.exercise)
+        replace(id, with: .clarify(clarification))
+        pendingClarification = clarification
+    }
+
+    private func decodeDetail(_ data: Data) -> String? {
+        (try? JSONDecoder().decode([String: String].self, from: data))?["detail"]
+    }
+
+    private func needsExerciseName(_ detail: String?) -> Bool {
+        guard let detail else { return true } // no detail → assume the name is what's missing
+        return detail.lowercased().contains("exercise name")
+    }
+
+    /// Heuristic: does this read like a set of reps/sets/weight (so a missing
+    /// piece is worth asking about) rather than free-form chatter?
+    private func looksLikeWorkout(_ text: String) -> Bool {
+        let t = text.lowercased()
+        guard t.rangeOfCharacter(from: .decimalDigits) != nil else { return false }
+        let signals = ["rep", "set", "lbs", " lb", "kg", "pound", "kilo", "@"]
+        if signals.contains(where: { t.contains($0) }) { return true }
+        return t.range(of: #"\d\s*[x×]\s*\d"#, options: .regularExpression) != nil
     }
 
     func saveDraft(_ parsed: ParsedSession, date: Date, draftID: UUID) {

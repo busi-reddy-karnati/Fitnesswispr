@@ -8,6 +8,7 @@ struct SessionDetailView: View {
     @State private var pendingDelete: Exercise?
     @State private var working = false
     @State private var error: String?
+    @State private var editedDate = Date()
 
     /// Called after a successful change so parent screens can refresh.
     private let onChanged: (() -> Void)?
@@ -43,6 +44,17 @@ struct SessionDetailView: View {
                     }
                 }
 
+                if isEditing {
+                    DatePicker(
+                        "Date",
+                        selection: $editedDate,
+                        displayedComponents: .date
+                    )
+                    .padding(12)
+                    .background(Color.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+
                 if let cardio = session.cardioNotes {
                     Label(cardio, systemImage: "figure.run")
                         .font(.subheadline)
@@ -76,7 +88,14 @@ struct SessionDetailView: View {
         .toolbar {
             if canEdit && !session.exercises.isEmpty {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(isEditing ? "Done" : "Edit") { isEditing.toggle() }
+                    Button(isEditing ? "Done" : "Edit") {
+                        if isEditing {
+                            saveDateIfChanged()
+                        } else {
+                            editedDate = Date.from(apiString: session.workoutDate) ?? Date()
+                        }
+                        isEditing.toggle()
+                    }
                 }
             }
         }
@@ -97,6 +116,28 @@ struct SessionDetailView: View {
                 delete(exercise)
             }
             Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    private func saveDateIfChanged() {
+        guard let sessionId = session.sessionId else { return }
+        let newStr = editedDate.apiDateString
+        guard newStr != session.workoutDate else { return }
+        working = true
+        Task {
+            do {
+                let req = UpdateSessionRequest(workoutDate: newStr)
+                let updated: WorkoutSession = try await APIClient.shared.put(
+                    APIEndpoints.session(sessionId), body: req
+                )
+                session = updated
+                working = false
+                onUpdated?(updated)
+                onChanged?()
+            } catch {
+                self.error = "Couldn't change the date: \(error.localizedDescription)"
+                working = false
+            }
         }
     }
 

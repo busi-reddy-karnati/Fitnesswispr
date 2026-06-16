@@ -4,6 +4,7 @@ import Charts
 struct ExerciseProgressView: View {
     let name: String
     @ObservedObject var store: ProgressStore
+    @State private var selectedDate: Date?
 
     var body: some View {
         Group {
@@ -64,7 +65,8 @@ struct ExerciseProgressView: View {
     }
 
     private func chart(_ s: ExerciseSummary) -> some View {
-        Chart {
+        let selected = selectedPoint(s)
+        return Chart {
             ForEach(s.points) { point in
                 LineMark(
                     x: .value("Date", point.date),
@@ -88,9 +90,49 @@ struct ExerciseProgressView: View {
                         .font(.caption2)
                         .foregroundColor(.green)
                 }
+
+            if let selected {
+                RuleMark(x: .value("Date", selected.date))
+                    .foregroundStyle(Color.secondary.opacity(0.25))
+                    .annotation(position: .top, spacing: 0, overflowResolution: .init(x: .fit(to: .chart), y: .disabled)) {
+                        valueBubble(selected, unit: s.unit)
+                    }
+
+                PointMark(
+                    x: .value("Date", selected.date),
+                    y: .value(s.metricLabel, selected.value)
+                )
+                .foregroundStyle(Color.appAccent)
+                .symbolSize(160)
+            }
         }
         .chartYScale(domain: .automatic(includesZero: false))
+        .chartXSelection(value: $selectedDate)
         .frame(height: 220)
+    }
+
+    private func valueBubble(_ point: ExercisePoint, unit: String) -> some View {
+        VStack(spacing: 1) {
+            Text("\(formatted(point.value)) \(unit)")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.primary)
+            Text(point.date.formatted(.dateTime.month(.abbreviated).day()))
+                .font(.caption2)
+                .foregroundColor(.secondary)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+    }
+
+    /// The logged point nearest to the user's tap on the x-axis.
+    private func selectedPoint(_ s: ExerciseSummary) -> ExercisePoint? {
+        guard let selectedDate else { return nil }
+        return s.points.min {
+            abs($0.date.timeIntervalSince(selectedDate)) < abs($1.date.timeIntervalSince(selectedDate))
+        }
     }
 
     private func formatted(_ value: Double) -> String {
