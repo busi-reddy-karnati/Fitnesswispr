@@ -51,10 +51,11 @@ final class ProgressStore: ObservableObject {
     func load() async {
         isLoading = true
         defer { isLoading = false }
+        let deviceUUID = ProfileStore.shared.activeID
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -180, to: end) ?? end
         let url = APIEndpoints.sessions(
-            deviceUUID: DeviceUUID.shared.id,
+            deviceUUID: deviceUUID,
             startDate: start.apiDateString,
             endDate: end.apiDateString,
             limit: 200
@@ -66,7 +67,12 @@ final class ProgressStore: ObservableObject {
         } catch {
             self.error = error.localizedDescription
         }
-        await syncAppleFitness()
+        // Apple Health only reflects this device's owner, not a linked profile.
+        if deviceUUID == DeviceUUID.shared.id {
+            await syncAppleFitness()
+        } else {
+            appleDays = [:]
+        }
     }
 
     /// Pulls Apple Health workout days to enrich the consistency view.

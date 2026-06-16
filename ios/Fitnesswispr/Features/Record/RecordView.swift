@@ -3,6 +3,7 @@ import SwiftUI
 struct RecordView: View {
     @StateObject private var vm: RecordViewModel
     @ObservedObject private var coordinator = QuickActionCoordinator.shared
+    @ObservedObject private var profile = ProfileStore.shared
     @Environment(\.dismiss) private var dismiss
 
     init() {
@@ -12,24 +13,15 @@ struct RecordView: View {
     var body: some View {
         NavigationStack {
             Group {
-                switch vm.state {
-                case .idle:
-                    idleView
-                case .recording:
-                    recordingView
-                case .parsing:
-                    LoadingOverlay(message: "Parsing workout...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                case .confirming(let parsed):
-                    ParsedWorkoutConfirm(parsed: parsed) { date in
-                        vm.confirmAndSave(parsed: parsed, workoutDate: date)
-                    } onRetry: {
-                        vm.reset()
+                if !profile.active.canWrite {
+                    readOnlyView
+                } else {
+                    VStack(spacing: 0) {
+                        if !profile.isViewingSelf {
+                            loggingForBanner
+                        }
+                        content
                     }
-                case .saved:
-                    savedView
-                case .error(let msg):
-                    errorView(msg)
                 }
             }
             .navigationTitle("Record Workout")
@@ -51,6 +43,59 @@ struct RecordView: View {
             }
             .onDisappear { vm.cancelRecording() }
         }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch vm.state {
+        case .idle:
+            idleView
+        case .recording:
+            recordingView
+        case .parsing:
+            LoadingOverlay(message: "Parsing workout...")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .confirming(let parsed):
+            ParsedWorkoutConfirm(parsed: parsed) { date in
+                vm.confirmAndSave(parsed: parsed, workoutDate: date)
+            } onRetry: {
+                vm.reset()
+            }
+        case .saved:
+            savedView
+        case .error(let msg):
+            errorView(msg)
+        }
+    }
+
+    private var loggingForBanner: some View {
+        HStack(spacing: 8) {
+            AvatarView(imageData: nil, initials: profile.active.initials, size: 22)
+            Text("Logging for \(profile.active.name)")
+                .font(.caption.weight(.medium))
+            Spacer()
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(Color.appAccent.opacity(0.12))
+    }
+
+    private var readOnlyView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "eye.slash")
+                .font(.system(size: 56))
+                .foregroundColor(.secondary)
+            Text("View-only access")
+                .font(.title3.weight(.semibold))
+            Text("You can view \(profile.active.name)'s training but can't log on their behalf.")
+                .font(.subheadline)
+                .multilineTextAlignment(.center)
+                .foregroundColor(.secondary)
+                .padding(.horizontal)
+            PrimaryButton(title: "Close") { dismiss() }
+                .padding(.horizontal)
+        }
+        .padding()
     }
 
     /// Starts recording automatically when launched via a quick action / Action Button.

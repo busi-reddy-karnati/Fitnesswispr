@@ -33,8 +33,12 @@ final class RecordViewModel: ObservableObject {
         Task { await fetchContext() }
     }
 
+    /// The profile this recording is being logged for (you or a linked profile
+    /// you have write access to).
+    private var targetUUID: String { ProfileStore.shared.activeID }
+
     private func fetchContext() async {
-        let url = APIEndpoints.deviceContext(DeviceUUID.shared.id)
+        let url = APIEndpoints.deviceContext(targetUUID)
         if let ctx = try? await APIClient.shared.get(url) as DeviceContextResponse {
             sessionContext.bodyWeightLbs = ctx.lastBodyWeightLbs
         }
@@ -125,7 +129,7 @@ final class RecordViewModel: ObservableObject {
         let context = ParseContext(bodyWeightLbs: sessionContext.bodyWeightLbs)
         let body = ParseRequest(
             transcript: text,
-            deviceUuid: DeviceUUID.shared.id,
+            deviceUuid: targetUUID,
             unitPreference: preferences.unitPreference,
             context: context
         )
@@ -147,6 +151,7 @@ final class RecordViewModel: ObservableObject {
 
         Task {
             let req = CreateSessionRequest(
+                deviceUuid: targetUUID,
                 workoutDate: workoutDate.apiDateString,
                 source: "voice",
                 rawTranscript: transcript,

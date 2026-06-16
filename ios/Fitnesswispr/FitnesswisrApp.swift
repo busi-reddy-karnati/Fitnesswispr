@@ -20,5 +20,13 @@ struct RootView: View {
             .fullScreenCover(isPresented: $coordinator.showRecorder) {
                 RecordView()
             }
+            .onOpenURL { url in
+                guard url.scheme == "spotrep" else { return }
+                Task { @MainActor in
+                    if let added = try? ProfileStore.shared.redeem(url.absoluteString) {
+                        ProfileStore.shared.setActive(added.id)
+                    }
+                }
+            }
     }
 }
