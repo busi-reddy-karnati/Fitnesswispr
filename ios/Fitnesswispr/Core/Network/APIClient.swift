@@ -8,7 +8,10 @@ final class APIClient {
 
     private func baseRequest(url: URL, method: String = "GET", timeout: TimeInterval = 30) -> URLRequest {
         var req = URLRequest(url: url)
-        req.setValue(DeviceUUID.shared.id, forHTTPHeaderField: "X-Device-UUID")
+        req.setValue(Identity.current, forHTTPHeaderField: "X-Device-UUID")
+        if let token = AccountStore.shared.token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpMethod = method
         req.timeoutInterval = timeout

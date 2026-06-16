@@ -13,5 +13,16 @@ class Settings(BaseSettings):
     PARSE_RATE_LIMIT: int = 100
     PARSE_RATE_WINDOW_SECONDS: int = 86400  # 24 hours
 
+    # Sign in with Apple. APPLE_BUNDLE_ID is the audience ("aud") of the
+    # identity token issued to the native iOS app.
+    APPLE_BUNDLE_ID: str = "com.fitnesswispr.app"
+    APPLE_ISSUER: str = "https://appleid.apple.com"
+    APPLE_JWKS_URL: str = "https://appleid.apple.com/auth/keys"
+
+    # Secret used to sign our own session tokens returned after sign-in.
+    JWT_SECRET: str = "dev-insecure-change-me-please-set-a-real-secret"
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRE_DAYS: int = 365
+
 
 settings = Settings()

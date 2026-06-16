@@ -41,18 +41,18 @@ final class ProfileStore: ObservableObject {
         heightCm = loaded.heightCm
         weightLbs = loaded.weightLbs
         linked = loaded.linked
-        activeID = loaded.activeID.isEmpty ? DeviceUUID.shared.id : loaded.activeID
+        activeID = loaded.activeID.isEmpty ? Identity.current : loaded.activeID
         avatarData = ProfileStore.loadAvatar()
 
         // Ensure the active profile still exists.
-        if activeID != DeviceUUID.shared.id && !linked.contains(where: { $0.id == activeID }) {
-            activeID = DeviceUUID.shared.id
+        if activeID != Identity.current && !linked.contains(where: { $0.id == activeID }) {
+            activeID = Identity.current
         }
     }
 
     // MARK: - Derived
 
-    var meID: String { DeviceUUID.shared.id }
+    var meID: String { Identity.current }
 
     var me: Profile {
         Profile(id: meID, name: myName.isEmpty ? "Me" : myName, access: .owner)
@@ -71,6 +71,13 @@ final class ProfileStore: ObservableObject {
     func setActive(_ id: String) {
         guard profiles.contains(where: { $0.id == id }) else { return }
         activeID = id
+    }
+
+    /// Re-point the active profile at "me". Call after signing in or out so the
+    /// app reloads data for the (possibly new) canonical identity.
+    func switchToSelf() {
+        activeID = meID
+        objectWillChange.send()
     }
 
     func remove(_ id: String) {

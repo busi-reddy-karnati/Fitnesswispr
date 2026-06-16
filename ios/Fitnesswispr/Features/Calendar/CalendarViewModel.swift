@@ -18,7 +18,7 @@ final class CalendarViewModel: ObservableObject {
     func fetchCalendar() async {
         isLoading = true
         defer { isLoading = false }
-        let url = APIEndpoints.calendar(deviceUUID: DeviceUUID.shared.id, year: currentYear, month: currentMonth)
+        let url = APIEndpoints.calendar(deviceUUID: Identity.current, year: currentYear, month: currentMonth)
         if let response = try? await APIClient.shared.get(url) as CalendarResponse {
             // A day can have multiple sessions; keep the first type per date so
             // duplicate dates don't crash (Dictionary(uniqueKeysWithValues:) traps on dupes).
@@ -31,7 +31,7 @@ final class CalendarViewModel: ObservableObject {
 
     func selectDate(_ dateStr: String) async {
         selectedDate = dateStr
-        let url = APIEndpoints.sessions(deviceUUID: DeviceUUID.shared.id, startDate: dateStr, endDate: dateStr)
+        let url = APIEndpoints.sessions(deviceUUID: Identity.current, startDate: dateStr, endDate: dateStr)
         if let sessions = try? await APIClient.shared.get(url) as [WorkoutSession] {
             selectedSessions = sessions
         }

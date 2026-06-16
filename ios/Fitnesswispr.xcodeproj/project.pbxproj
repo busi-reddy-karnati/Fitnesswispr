@@ -54,6 +54,7 @@
 		C1C92A9976D105DBD71E358D /* ProfileStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50E6083E47B58CC822F6CA8B /* ProfileStore.swift */; };
 		C3DD6485B2EFDA18F72DDD99 /* Date+Formatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7F17D7604A3C1E0D518705C /* Date+Formatting.swift */; };
 		C5A2ABA4A96A3C75C32D081E /* AddPastWorkoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4A83862BE908267E182CACF7 /* AddPastWorkoutView.swift */; };
+		C77F8F8DF69951A0FC33CF0F /* AccountStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D690E6A7C133A8A803874414 /* AccountStore.swift */; };
 		CE73DF7759103276728E2104 /* ProgressStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F653B9B3B45768052E0A29C1 /* ProgressStore.swift */; };
 		D3DB98A11A223D48852C0BE7 /* CalendarModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5549F3DDA93BAEBD5EAC57C /* CalendarModels.swift */; };
 		DB58642C12A1284DF8249B55 /* SparklineView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01385F8D5D96C9A0F28D3605 /* SparklineView.swift */; };
@@ -137,6 +138,7 @@
 		C3590A4A3DA6BCBB9031A2B6 /* SessionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionContext.swift; sourceTree = "<group>"; };
 		D2B6CC5BDE73E16EA141A3EB /* APIEndpoints.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIEndpoints.swift; sourceTree = "<group>"; };
 		D4BEDAB0611654D652609EE4 /* LoadingOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoadingOverlay.swift; sourceTree = "<group>"; };
+		D690E6A7C133A8A803874414 /* AccountStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountStore.swift; sourceTree = "<group>"; };
 		D8E76679488BF2E4A1F81435 /* WorkoutTypeBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutTypeBadge.swift; sourceTree = "<group>"; };
 		E1515C0EB9A5C48BCD5ACF73 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferences.swift; sourceTree = "<group>"; };
 		E5549F3DDA93BAEBD5EAC57C /* CalendarModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarModels.swift; sourceTree = "<group>"; };
@@ -171,6 +173,7 @@
 		0CFF172C609D1F58C31BB5A8 /* Persistence */ = {
 			isa = PBXGroup;
 			children = (
+				D690E6A7C133A8A803874414 /* AccountStore.swift */,
 				7A1FFA91E0A4BE55644EA632 /* DeviceUUID.swift */,
 				50E6083E47B58CC822F6CA8B /* ProfileStore.swift */,
 				E1515C0EB9A5C48BCD5ACF73 /* UserPreferences.swift */,
@@ -526,6 +529,7 @@
 			files = (
 				96157C0FEDF03BE5043B5534 /* APIClient.swift in Sources */,
 				BCD10E7F626252AA34BC989D /* APIEndpoints.swift in Sources */,
+				C77F8F8DF69951A0FC33CF0F /* AccountStore.swift in Sources */,
 				C5A2ABA4A96A3C75C32D081E /* AddPastWorkoutView.swift in Sources */,
 				DE8C47E51F3A6C1EDAE143EE /* AddPastWorkoutViewModel.swift in Sources */,
 				86A2AD0008D10AC64613DBFB /* AssistantModels.swift in Sources */,

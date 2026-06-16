@@ -10,7 +10,7 @@ final class HomeViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
         let today = Date().apiDateString
-        let url = APIEndpoints.sessions(deviceUUID: DeviceUUID.shared.id, startDate: today, endDate: today)
+        let url = APIEndpoints.sessions(deviceUUID: Identity.current, startDate: today, endDate: today)
         do {
             todaySessions = try await APIClient.shared.get(url)
         } catch {

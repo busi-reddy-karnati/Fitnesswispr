@@ -24,6 +24,7 @@ enum APIEndpoints {
     static var assistantChat: URL { URL(string: "\(baseURL)/api/v1/assistant/chat")! }
     static var importPreview: URL { URL(string: "\(baseURL)/api/v1/import/preview")! }
     static var importCommit: URL { URL(string: "\(baseURL)/api/v1/import/commit")! }
+    static var authApple: URL { URL(string: "\(baseURL)/api/v1/auth/apple")! }
 
     static func session(_ id: String) -> URL {
         URL(string: "\(baseURL)/api/v1/sessions/\(id)")!

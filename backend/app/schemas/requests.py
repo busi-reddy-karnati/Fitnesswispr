@@ -29,6 +29,16 @@ class ParseRequest(BaseModel):
     context: dict = Field(default_factory=dict)
 
 
+class AppleAuthRequest(BaseModel):
+    # The identity token returned by Sign in with Apple on the device.
+    identity_token: str
+    # The device's current local (anonymous) UUID, so its data can be merged
+    # into the account on first sign-in from a new device.
+    device_uuid: str | None = None
+    # Apple only returns the user's name on the very first authorization.
+    full_name: str | None = None
+
+
 class CreateSessionRequest(BaseModel):
     device_uuid: uuid.UUID | None = None
     workout_date: date

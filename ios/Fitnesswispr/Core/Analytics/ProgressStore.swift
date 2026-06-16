@@ -89,7 +89,7 @@ final class ProgressStore: ObservableObject {
 
         // Apple Health enriches consistency but must never block the critical
         // path: use cached results, and sync just once in the background.
-        if deviceUUID == DeviceUUID.shared.id {
+        if deviceUUID == Identity.current {
             if HealthKitManager.shared.didSync {
                 appleDays = HealthKitManager.shared.workoutsByDay
             } else {
