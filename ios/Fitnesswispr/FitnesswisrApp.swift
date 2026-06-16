@@ -29,11 +29,21 @@ struct RootView: View {
                     case "record":
                         coordinator.triggerRecordNow()
                     default:
-                        if let added = try? ProfileStore.shared.redeem(url.absoluteString) {
-                            ProfileStore.shared.setActive(added.id)
-                        }
+                        coordinator.handleInvite(url.absoluteString)
                     }
                 }
+            }
+            .alert(
+                coordinator.joinOutcome?.title ?? "",
+                isPresented: Binding(
+                    get: { coordinator.joinOutcome != nil },
+                    set: { if !$0 { coordinator.joinOutcome = nil } }
+                ),
+                presenting: coordinator.joinOutcome
+            ) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { outcome in
+                Text(outcome.message)
             }
     }
 }

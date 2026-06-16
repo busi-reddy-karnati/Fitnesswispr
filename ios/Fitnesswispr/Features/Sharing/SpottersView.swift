@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SpottersView: View {
     @ObservedObject private var profile = ProfileStore.shared
@@ -7,6 +8,7 @@ struct SpottersView: View {
     @State private var joinCode = ""
     @State private var joinError: String?
     @State private var joinedName: String?
+    @State private var copiedCode = false
 
     @State private var pendingRevoke: Grantee?
 
@@ -82,19 +84,31 @@ struct SpottersView: View {
                 Text("View only").tag(ProfileAccess.read)
             }
             .pickerStyle(.segmented)
+            .onChange(of: shareAccess) { _, _ in copiedCode = false }
 
             ShareLink(
                 item: profile.inviteURL(grant: shareAccess),
                 subject: Text("Be my spotter on SpotRep"),
-                message: Text("Follow my training on SpotRep — open this link in the app.")
+                message: Text(inviteMessage)
             ) {
-                Label("Share invite", systemImage: "square.and.arrow.up")
+                Label("Share invite link", systemImage: "square.and.arrow.up")
+            }
+
+            Button {
+                UIPasteboard.general.string = profile.inviteToken(grant: shareAccess)
+                copiedCode = true
+            } label: {
+                Label(copiedCode ? "Code copied" : "Copy invite code", systemImage: copiedCode ? "checkmark" : "doc.on.doc")
             }
         } header: {
             Text("Add a spotter")
         } footer: {
-            Text("Send the invite to a spotter. When they open it in SpotRep they'll be able to \(shareAccess == .write ? "view and log" : "view") your training.")
+            Text("Tapping the link opens SpotRep and adds you automatically (if they have the app). If the link isn't tappable in their messenger, send the code instead — they paste it under “Follow someone” below.")
         }
+    }
+
+    private var inviteMessage: String {
+        "Be my spotter on SpotRep — tap to open the app and start \(shareAccess == .write ? "viewing & logging" : "viewing") my training. If the link won't open, paste this code in SpotRep ▸ Spotters ▸ Follow someone:\n\(profile.inviteToken(grant: shareAccess))"
     }
 
     // MARK: - Join someone
