@@ -4,6 +4,7 @@ struct DayWorkoutSheet: View {
     let dateStr: String
     let sessions: [WorkoutSession]
     var appleWorkouts: [AppleFitnessWorkout] = []
+    var onChanged: (() -> Void)? = nil
 
     private var isEmpty: Bool { sessions.isEmpty && appleWorkouts.isEmpty }
 
@@ -17,7 +18,7 @@ struct DayWorkoutSheet: View {
                         Section("Logged in SpotRep") {
                             ForEach(sessions) { session in
                                 NavigationLink {
-                                    SessionDetailView(session: session)
+                                    SessionDetailView(session: session, onChanged: onChanged)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {

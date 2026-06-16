@@ -56,6 +56,7 @@
 		DE8C47E51F3A6C1EDAE143EE /* AddPastWorkoutViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41AE019403FD8E6B423A76B6 /* AddPastWorkoutViewModel.swift */; };
 		E0770D27E2AD0BB6F8187E28 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EF8CCD3C8FEF16C3610C465 /* HistoryView.swift */; };
 		E1001C7ABF1C78C8372D7E09 /* RecordViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 73E0445BCBB459C59994F3AC /* RecordViewModel.swift */; };
+		E3F5257DBFE48B6D99218A4F /* ManualAddExerciseView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8EFA589189092630CB2892C /* ManualAddExerciseView.swift */; };
 		E605C492B6CECE05CB80D66E /* QuickActionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65C89CDF0775E7103B628D6B /* QuickActionCoordinator.swift */; };
 		E72B8650E3D81902C2DD8BED /* BodyMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A24D647F1C7EF8609E67830 /* BodyMapView.swift */; };
 		EEDA87C76ECC6B0CEFBBCADA /* CalendarDayCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62404CEC5F2464BCF6EBF42D /* CalendarDayCell.swift */; };
@@ -118,6 +119,7 @@
 		A7F17D7604A3C1E0D518705C /* Date+Formatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Date+Formatting.swift"; sourceTree = "<group>"; };
 		A97DE50AE6F3AB75C78CB165 /* Color+Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Theme.swift"; sourceTree = "<group>"; };
 		B258539C25D8FCFD452AA243 /* EmptyStateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmptyStateView.swift; sourceTree = "<group>"; };
+		B8EFA589189092630CB2892C /* ManualAddExerciseView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManualAddExerciseView.swift; sourceTree = "<group>"; };
 		BFA09AE85B372090AE47BA57 /* FitnesswisrApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FitnesswisrApp.swift; sourceTree = "<group>"; };
 		C2317305B135CC4BE230AAB3 /* TranscriptPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPreview.swift; sourceTree = "<group>"; };
 		C3590A4A3DA6BCBB9031A2B6 /* SessionContext.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionContext.swift; sourceTree = "<group>"; };
@@ -354,6 +356,7 @@
 			isa = PBXGroup;
 			children = (
 				15E1CE8799764FD942A26ED4 /* ExerciseProgressView.swift */,
+				B8EFA589189092630CB2892C /* ManualAddExerciseView.swift */,
 				E71849F3ED1D94FE97D35867 /* MuscleDetailView.swift */,
 			);
 			path = Muscle;
@@ -506,6 +509,7 @@
 				F76653CA3B5AEAABB70CA8CD /* HomeView.swift in Sources */,
 				08BFFDA269AA1CA6284394D4 /* HomeViewModel.swift in Sources */,
 				6247EAF10FC1E9EC9ED8EF88 /* LoadingOverlay.swift in Sources */,
+				E3F5257DBFE48B6D99218A4F /* ManualAddExerciseView.swift in Sources */,
 				DB763F1AD50EC5923CD28035 /* MuscleDetailView.swift in Sources */,
 				048CAD2C7E84C9EB4FCF1503 /* MuscleRegion.swift in Sources */,
 				42825A72D44220257D7E93AA /* NetworkError.swift in Sources */,
@@ -573,7 +577,7 @@
 				CODE_SIGN_ENTITLEMENTS = Fitnesswispr/Fitnesswispr.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = WAHLKW2N4G;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Fitnesswispr/Info.plist;
@@ -735,7 +739,7 @@
 				CODE_SIGN_ENTITLEMENTS = Fitnesswispr/Fitnesswispr.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEVELOPMENT_TEAM = WAHLKW2N4G;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Fitnesswispr/Info.plist;

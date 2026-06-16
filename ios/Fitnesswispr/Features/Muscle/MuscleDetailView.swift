@@ -3,6 +3,9 @@ import SwiftUI
 struct MuscleDetailView: View {
     let region: MuscleRegion
     @ObservedObject var store: ProgressStore
+    @State private var showManualAdd = false
+
+    private var canWrite: Bool { ProfileStore.shared.active.canWrite }
 
     var body: some View {
         let summary = store.summary(for: region)
@@ -19,6 +22,10 @@ struct MuscleDetailView: View {
                     )
                     .frame(maxWidth: .infinity)
                     .padding(.top, 24)
+
+                    if canWrite {
+                        addExerciseButton
+                    }
                 } else {
                     Text("YOUR EXERCISES")
                         .font(.caption.weight(.semibold))
@@ -29,12 +36,48 @@ struct MuscleDetailView: View {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    if canWrite {
+                        addExerciseButton
+                    }
                 }
             }
             .padding()
         }
         .navigationTitle(region.rawValue)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canWrite {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showManualAdd = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add exercise")
+                }
+            }
+        }
+        .sheet(isPresented: $showManualAdd) {
+            ManualAddExerciseView(region: region) {
+                Task { await store.load() }
+            }
+        }
+    }
+
+    private var addExerciseButton: some View {
+        Button {
+            showManualAdd = true
+        } label: {
+            Label("Add \(region.rawValue.lowercased()) exercise", systemImage: "plus.circle.fill")
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Color.appAccent.opacity(0.12))
+                .foregroundColor(.appAccent)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+        .padding(.top, 4)
     }
 
     private func coachCard(_ summary: MuscleSummary) -> some View {

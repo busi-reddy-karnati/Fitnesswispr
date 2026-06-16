@@ -52,6 +52,12 @@ struct ParsedSession: Codable {
     var exercises: [Exercise]
 }
 
+/// Partial update for a session. Sending `exercises` replaces the session's
+/// exercise list, which we use to remove a single exercise.
+struct UpdateSessionRequest: Encodable {
+    let exercises: [Exercise]
+}
+
 struct CreateSessionRequest: Encodable {
     var deviceUuid: String? = nil
     let workoutDate: String

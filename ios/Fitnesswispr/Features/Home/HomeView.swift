@@ -45,7 +45,8 @@ struct HomeView: View {
                 DayWorkoutSheet(
                     dateStr: item.value,
                     sessions: store.sessions(on: item.value),
-                    appleWorkouts: store.appleWorkouts(on: item.value)
+                    appleWorkouts: store.appleWorkouts(on: item.value),
+                    onChanged: { Task { await store.load() } }
                 )
                 .presentationDetents([.medium, .large])
             }

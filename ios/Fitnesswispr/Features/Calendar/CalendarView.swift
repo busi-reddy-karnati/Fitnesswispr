@@ -20,8 +20,12 @@ struct CalendarView: View {
             get: { vm.selectedDate.map { IdentifiableString(value: $0) } },
             set: { _ in vm.selectedDate = nil }
         )) { item in
-            DayWorkoutSheet(dateStr: item.value, sessions: vm.selectedSessions)
-                .presentationDetents([.medium, .large])
+            DayWorkoutSheet(
+                dateStr: item.value,
+                sessions: vm.selectedSessions,
+                onChanged: { Task { await vm.fetchCalendar() } }
+            )
+            .presentationDetents([.medium, .large])
         }
     }
 
