@@ -29,6 +29,18 @@ class ParseRequest(BaseModel):
     context: dict = Field(default_factory=dict)
 
 
+class HealthWorkoutItem(BaseModel):
+    workout_date: date
+    category: str
+    symbol: str
+    duration_minutes: int = 0
+
+
+class HealthSyncRequest(BaseModel):
+    device_uuid: str
+    workouts: list[HealthWorkoutItem] = []
+
+
 class AppleAuthRequest(BaseModel):
     # The identity token returned by Sign in with Apple on the device.
     identity_token: str

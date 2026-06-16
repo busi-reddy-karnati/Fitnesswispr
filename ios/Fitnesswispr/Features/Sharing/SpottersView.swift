@@ -91,7 +91,7 @@ struct SpottersView: View {
         Section("Following") {
             ForEach(profile.linked) { p in
                 HStack(spacing: 12) {
-                    AvatarView(imageData: nil, initials: p.initials, size: 36)
+                    RemoteAvatarView(uuid: p.id, initials: p.initials, size: 36)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(p.name)
                         Text(p.access.label)

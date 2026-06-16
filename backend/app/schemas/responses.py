@@ -29,6 +29,15 @@ class DeviceContextResponse(BaseModel):
     last_updated: datetime | None = None
 
 
+class HealthWorkoutResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    workout_date: date
+    category: str
+    symbol: str
+    duration_minutes: int
+
+
 class AuthResponse(BaseModel):
     # Our own session token (JWT) the app stores and can send on requests.
     token: str

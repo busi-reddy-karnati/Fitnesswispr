@@ -39,6 +39,7 @@
 		86A2AD0008D10AC64613DBFB /* AssistantModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD3F9B5A926BAC82F48A573A /* AssistantModels.swift */; };
 		871E7D6CE88F0C7510BF83AE /* HealthKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 640215C689F90C1A491265D6 /* HealthKitManager.swift */; };
 		8972C1E02BD325DEDDD960A9 /* Color+Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A97DE50AE6F3AB75C78CB165 /* Color+Theme.swift */; };
+		89958460FFFD010C3BBC99C1 /* RemoteAvatar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 505F836DEB5A6DF8D8774D39 /* RemoteAvatar.swift */; };
 		91EB8ACE44A110638CCC1D43 /* ExportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E672300C3E1AE8D672165090 /* ExportView.swift */; };
 		949B70EE22C1042BC5FB8E84 /* RecordView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43CD48B97AE097C09A01C92B /* RecordView.swift */; };
 		96157C0FEDF03BE5043B5534 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0885DBD5E0D21E96DCED7AB3 /* APIClient.swift */; };
@@ -107,6 +108,7 @@
 		4A2D3FF5979B96FDD4AC826F /* ImportModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImportModels.swift; sourceTree = "<group>"; };
 		4A83862BE908267E182CACF7 /* AddPastWorkoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddPastWorkoutView.swift; sourceTree = "<group>"; };
 		4F8089FF089ACDED92D40802 /* HistoryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryViewModel.swift; sourceTree = "<group>"; };
+		505F836DEB5A6DF8D8774D39 /* RemoteAvatar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteAvatar.swift; sourceTree = "<group>"; };
 		50E6083E47B58CC822F6CA8B /* ProfileStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileStore.swift; sourceTree = "<group>"; };
 		5BA3EE307A1BD4BCD3B78C3C /* MuscleRegion.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MuscleRegion.swift; sourceTree = "<group>"; };
 		5FCE3336C86A3FB81F9A1A7B /* TodaySummaryCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodaySummaryCard.swift; sourceTree = "<group>"; };
@@ -382,6 +384,7 @@
 				F01675CA43E3F99D9C3A121D /* ErrorBanner.swift */,
 				D4BEDAB0611654D652609EE4 /* LoadingOverlay.swift */,
 				070038811A1DB06790F91D05 /* PrimaryButton.swift */,
+				505F836DEB5A6DF8D8774D39 /* RemoteAvatar.swift */,
 				01385F8D5D96C9A0F28D3605 /* SparklineView.swift */,
 				D8E76679488BF2E4A1F81435 /* WorkoutTypeBadge.swift */,
 			);
@@ -573,6 +576,7 @@
 				E605C492B6CECE05CB80D66E /* QuickActionCoordinator.swift in Sources */,
 				949B70EE22C1042BC5FB8E84 /* RecordView.swift in Sources */,
 				E1001C7ABF1C78C8372D7E09 /* RecordViewModel.swift in Sources */,
+				89958460FFFD010C3BBC99C1 /* RemoteAvatar.swift in Sources */,
 				9A95BB963A08DF4FEF161634 /* SessionContext.swift in Sources */,
 				28605135C7E48D7A0A2C597E /* SessionDetailView.swift in Sources */,
 				0F2CF11621A087519ADCD9A8 /* SessionRowView.swift in Sources */,
@@ -629,7 +633,7 @@
 				CODE_SIGN_ENTITLEMENTS = Fitnesswispr/Fitnesswispr.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = WAHLKW2N4G;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Fitnesswispr/Info.plist;
@@ -791,7 +795,7 @@
 				CODE_SIGN_ENTITLEMENTS = Fitnesswispr/Fitnesswispr.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 16;
 				DEVELOPMENT_TEAM = WAHLKW2N4G;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Fitnesswispr/Info.plist;

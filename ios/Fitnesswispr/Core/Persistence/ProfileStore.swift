@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Central store for the user's own profile (name, body metrics, avatar) and
 /// any linked profiles shared with them ("Spotter" sharing). Persisted locally.
@@ -88,6 +89,41 @@ final class ProfileStore: ObservableObject {
     func setAvatar(_ data: Data?) {
         avatarData = data
         ProfileStore.saveAvatar(data)
+        if let data { uploadAvatar(data) }
+    }
+
+    private var didPushAvatar = false
+
+    /// Best-effort push of an already-set photo so spotters can see it (e.g. on
+    /// first launch after this feature shipped). Safe to call repeatedly.
+    func pushAvatarIfNeeded() {
+        guard !didPushAvatar, let data = avatarData else { return }
+        didPushAvatar = true
+        uploadAvatar(data)
+    }
+
+    private func uploadAvatar(_ data: Data) {
+        guard let jpeg = ProfileStore.downscaledJPEG(data) else { return }
+        let uuid = meID
+        Task {
+            try? await APIClient.shared.putData(
+                APIEndpoints.profileAvatar(uuid), data: jpeg, contentType: "image/jpeg"
+            )
+            await AvatarCache.shared.invalidate(uuid)
+        }
+    }
+
+    /// Shrink a photo to a reasonable avatar size to keep uploads small.
+    private static func downscaledJPEG(_ data: Data, maxDimension: CGFloat = 512) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let longest = max(image.size.width, image.size.height)
+        let scale = longest > maxDimension ? maxDimension / longest : 1
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        return resized.jpegData(compressionQuality: 0.8)
     }
 
     // MARK: - Sharing

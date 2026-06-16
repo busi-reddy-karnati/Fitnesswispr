@@ -59,7 +59,10 @@ struct HomeView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
-            .task { await store.loadIfNeeded() }
+            .task {
+                profile.pushAvatarIfNeeded()
+                await store.loadIfNeeded()
+            }
             .refreshable { await store.load() }
             .onChange(of: profile.activeID) { _, _ in
                 Task { await store.load() }
@@ -81,8 +84,8 @@ struct HomeView: View {
                         profile.setActive(p.id)
                     } label: {
                         VStack(spacing: 5) {
-                            AvatarView(
-                                imageData: p.id == profile.meID ? profile.avatarData : nil,
+                            RemoteAvatarView(
+                                uuid: p.id,
                                 initials: p.initials,
                                 size: 54,
                                 ringColor: p.id == profile.activeID ? .appAccent : nil
