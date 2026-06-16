@@ -68,4 +68,4 @@ updated" date above.
 
 ## Contact
 
-Questions or deletion requests: **[ADD CONTACT EMAIL]**
+Questions or deletion requests: **amit.y@alumni.iitgn.ac.in**
