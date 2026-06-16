@@ -6,12 +6,12 @@ final class APIClient {
 
     private init() {}
 
-    private func baseRequest(url: URL, method: String = "GET") -> URLRequest {
+    private func baseRequest(url: URL, method: String = "GET", timeout: TimeInterval = 30) -> URLRequest {
         var req = URLRequest(url: url)
         req.setValue(DeviceUUID.shared.id, forHTTPHeaderField: "X-Device-UUID")
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpMethod = method
-        req.timeoutInterval = 30
+        req.timeoutInterval = timeout
         return req
     }
 
@@ -22,8 +22,8 @@ final class APIClient {
         return try decode(T.self, from: data)
     }
 
-    func post<Body: Encodable, Response: Decodable>(_ url: URL, body: Body) async throws -> Response {
-        var req = baseRequest(url: url, method: "POST")
+    func post<Body: Encodable, Response: Decodable>(_ url: URL, body: Body, timeout: TimeInterval = 30) async throws -> Response {
+        var req = baseRequest(url: url, method: "POST", timeout: timeout)
         req.httpBody = try snakeCaseEncoder.encode(body)
         let (data, response) = try await session.data(for: req)
         try validate(response: response, data: data)

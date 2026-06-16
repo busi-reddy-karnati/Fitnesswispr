@@ -16,13 +16,20 @@ struct HomeView: View {
                     }
                     consistencySection
                     bodySection
-                    recordSection
 
                     if let error = store.error {
                         ErrorBanner(message: error) { store.error = nil }
                     }
                 }
                 .padding()
+                .padding(.bottom, 8)
+            }
+            .safeAreaInset(edge: .bottom) {
+                recordSection
+                    .padding(.horizontal)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
+                    .background(.ultraThinMaterial)
             }
             .navigationTitle("SpotRep")
             .toolbar {
@@ -154,32 +161,56 @@ struct HomeView: View {
         }
     }
 
+    // MARK: - Bottom: composer bar
+
+    /// A single chat-style bar: attach (+) · tap-to-type · mic.
+    private var composerBar: some View {
+        HStack(spacing: 10) {
+            Button {
+                QuickActionCoordinator.shared.openImport()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .frame(width: 34, height: 34)
+                    .background(Color.primary.opacity(0.06), in: Circle())
+            }
+            .accessibilityLabel("Import a spreadsheet or photo")
+
+            Text(profile.isViewingSelf ? "Message SpotRep" : "Log for \(profile.active.name)")
+                .foregroundColor(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { QuickActionCoordinator.shared.openChat() }
+
+            Button {
+                QuickActionCoordinator.shared.triggerRecordNow()
+            } label: {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .background(Color.appAccent, in: Circle())
+            }
+            .accessibilityLabel("Record a workout")
+        }
+        .padding(.leading, 6)
+        .padding(.trailing, 6)
+        .padding(.vertical, 6)
+        .background(
+            Capsule(style: .continuous).fill(Color.cardBackground)
+        )
+        .overlay(
+            Capsule(style: .continuous).stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
+
     // MARK: - Bottom: record
 
     @ViewBuilder
     private var recordSection: some View {
         if profile.active.canWrite {
-            VStack(spacing: 8) {
-                Button {
-                    QuickActionCoordinator.shared.triggerRecordNow()
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "mic.fill")
-                        Text(profile.isViewingSelf ? "Record a workout" : "Log for \(profile.active.name)")
-                            .font(.headline)
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(Color.appAccent)
-                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                }
-                if profile.isViewingSelf {
-                    Text("or “Hey Siri, log a workout in SpotRep”")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-            }
+            composerBar
         } else {
             Label("View-only access to \(profile.active.name)", systemImage: "eye")
                 .font(.subheadline)

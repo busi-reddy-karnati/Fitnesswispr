@@ -18,13 +18,20 @@ struct RootView: View {
     var body: some View {
         HomeView()
             .fullScreenCover(isPresented: $coordinator.showRecorder) {
-                RecordView()
+                AssistantView()
             }
             .onOpenURL { url in
                 guard url.scheme == "spotrep" else { return }
                 Task { @MainActor in
-                    if let added = try? ProfileStore.shared.redeem(url.absoluteString) {
-                        ProfileStore.shared.setActive(added.id)
+                    switch url.host {
+                    case "chat":
+                        coordinator.openChat()
+                    case "record":
+                        coordinator.triggerRecordNow()
+                    default:
+                        if let added = try? ProfileStore.shared.redeem(url.absoluteString) {
+                            ProfileStore.shared.setActive(added.id)
+                        }
                     }
                 }
             }

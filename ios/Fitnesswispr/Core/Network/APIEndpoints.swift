@@ -2,16 +2,28 @@ import Foundation
 
 enum APIEndpoints {
     static var baseURL: String {
+        #if DEBUG
+        // Debug/simulator builds talk to a local backend for fast iteration.
+        // Override with the API_BASE_URL launch env var when testing against a server.
+        if let override = ProcessInfo.processInfo.environment["API_BASE_URL"], !override.isEmpty {
+            return override
+        }
+        return "http://localhost:8000"
+        #else
         if let configured = Bundle.main.object(forInfoDictionaryKey: "API_BASE_URL") as? String,
            !configured.isEmpty {
             return configured
         }
         return "http://localhost:8000"
+        #endif
     }
 
     static var health: URL { URL(string: "\(baseURL)/api/v1/health")! }
     static var parse: URL { URL(string: "\(baseURL)/api/v1/parse")! }
     static var sessions: URL { URL(string: "\(baseURL)/api/v1/sessions")! }
+    static var assistantChat: URL { URL(string: "\(baseURL)/api/v1/assistant/chat")! }
+    static var importPreview: URL { URL(string: "\(baseURL)/api/v1/import/preview")! }
+    static var importCommit: URL { URL(string: "\(baseURL)/api/v1/import/commit")! }
 
     static func session(_ id: String) -> URL {
         URL(string: "\(baseURL)/api/v1/sessions/\(id)")!

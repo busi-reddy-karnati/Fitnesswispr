@@ -1,9 +1,14 @@
+import asyncio
 import json
 import logging
 
 from fastapi import HTTPException
 from google import genai
 from google.genai import types
+
+# Disable Gemini 2.5 "thinking" for extraction tasks — it adds large latency on
+# big structured outputs (e.g. a full spreadsheet) with little accuracy gain.
+_NO_THINKING = types.ThinkingConfig(thinking_budget=0)
 
 from app.config import settings
 
@@ -99,3 +104,161 @@ async def parse_transcript(
         )
 
     return parsed
+
+
+ASSISTANT_SYSTEM_PROMPT = """You are SpotRep, a friendly, concise gym training assistant.
+
+Answer the user's question using ONLY the workout history provided below. The \
+history is the user's logged sessions (most recent first). When asked about a \
+personal record (PR), the heaviest weight, "last time", or progress for an \
+exercise, compute it from the data. Be specific with numbers and dates.
+
+Rules:
+- Keep answers short and conversational (1-3 sentences). No markdown headers.
+- Use the user's units as they appear in the data (lbs/kg).
+- If the history doesn't contain the answer, say so briefly and suggest logging it.
+- Today's date is {today}.
+- Do not invent workouts that aren't in the history.
+
+WORKOUT HISTORY:
+{history}
+"""
+
+
+IMPORT_SHEET_PROMPT = """You are a fitness data extractor. You are given the raw cell grid of ONE person's workout-log spreadsheet tab. The layout is a hypertrophy "mesocycle": blocks labeled like "MESO #1 / DAY 1", each block lists exercises down the rows, and columns are grouped by WEEK (Week 1..8), each week having three sub-columns: SETS, REPS, WEIGHT.
+
+Extract every cell that contains ACTUAL logged data into structured JSON.
+
+CRITICAL DATA-REPAIR RULES:
+1. Excel auto-converted many rep/weight values into dates. Any value that looks like an ISO datetime (e.g. "2012-12-12 00:00:00", "2010-12-10 00:00:00", "2008-08-08 00:00:00") is NOT a date — it is a slash-separated triple of numbers. Convert using month/day/last-two-of-year in order: "2012-12-12 00:00:00" -> 12/12/12, "2010-12-10 00:00:00" -> 10/12/10, "2008-08-08 00:00:00" -> 8/8/8.
+2. REPS like "9 / 12 / 12" means three sets with reps 9, 12, 12. WEIGHT like "45 / 50 /" means sets at 45, 50, and a third unknown. Pair reps and weights by position across the sets for that week. If counts differ, pair what you can and leave missing values null.
+3. Values like "8 - 12" or "8-12" are TARGET ranges, not actual logged sets — SKIP exercises/weeks that only have a target and no actual numbers.
+4. "lvl 8", "Floor", "Full push-up", "Step ups", "A", etc. are notes — put them in the exercise "notes", never as a weight.
+5. "1 minute" / holds -> duration_seconds (e.g. 60), reps null, weight null.
+6. Map garbled or abbreviated exercise names to the closest standard gym exercise name.
+7. Determine the unit (lbs unless clearly kg).
+
+For each (week, day) that has at least one exercise with real data, output one workout. Classify workout_type from the exercises (Push/Pull/Legs/Upper/Lower/Full Body/Cardio/Other).
+
+Return ONLY JSON (no markdown fences) in exactly this shape:
+{
+  "unit": "lbs",
+  "workouts": [
+    {"week": 1, "day": 1, "day_label": "Day 1", "workout_type": "Push",
+     "exercises": [
+       {"name": "Bench Press", "muscle_group": "chest", "notes": null,
+        "sets": [{"reps": 12, "weight": 135.0, "weight_unit": "lbs", "duration_seconds": null}]}
+     ]}
+  ]
+}
+If nothing usable is present, return {"unit": "lbs", "workouts": []}."""
+
+
+IMPORT_PHOTO_PROMPT = """You extract workout data from a PHOTO of a person's workout record (handwritten notebook, printed sheet, app screenshot, or whiteboard).
+
+Read every exercise with its sets, reps, and weights. Rules:
+- "3x10 @ 135" or "3 sets of 10 at 135" -> three sets of reps 10, weight 135.
+- Per-set values "10/8/6" -> three sets with those reps.
+- Bodyweight moves -> weight null. Holds/planks -> duration_seconds, reps/weight null.
+- Map abbreviated/garbled names to the closest standard gym exercise.
+- Determine the unit (lbs unless clearly kg).
+- If a date is visible, return it as workout_date in YYYY-MM-DD; otherwise null.
+
+Return ONLY JSON (no fences):
+{
+  "unit": "lbs",
+  "workouts": [
+    {"workout_date": null, "workout_type": "Push",
+     "exercises": [
+       {"name": "Bench Press", "muscle_group": "chest", "notes": null,
+        "sets": [{"reps": 10, "weight": 135.0, "weight_unit": "lbs", "duration_seconds": null}]}
+     ]}
+  ]
+}
+If nothing usable, return {"unit": "lbs", "workouts": []}."""
+
+
+def _strip_json(raw: str) -> dict:
+    text = (raw or "").strip()
+    if text.startswith("```"):
+        text = text.split("```", 2)[1] if "```" in text else text
+        if text.startswith("json"):
+            text = text[4:]
+        text = text.strip("` \n")
+    return json.loads(text)
+
+
+async def extract_spreadsheet_sheet(grid_text: str) -> dict:
+    """Extract one person's logged workouts from a spreadsheet tab grid."""
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    try:
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=grid_text,
+            config=types.GenerateContentConfig(
+                system_instruction=IMPORT_SHEET_PROMPT,
+                response_mime_type="application/json",
+                temperature=0.1,
+                thinking_config=_NO_THINKING,
+            ),
+        )
+    except Exception as exc:
+        logger.error("Gemini API error (import sheet): %s", exc)
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
+    try:
+        return _strip_json(response.text)
+    except json.JSONDecodeError as exc:
+        logger.error("Bad import-sheet JSON: %s", response.text[:500])
+        raise HTTPException(status_code=502, detail="Could not read the spreadsheet") from exc
+
+
+async def extract_photo(image_bytes: bytes, mime: str) -> dict:
+    """Extract workouts from a photo of a workout record."""
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    try:
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=mime),
+                "Extract the workouts from this image.",
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=IMPORT_PHOTO_PROMPT,
+                response_mime_type="application/json",
+                temperature=0.1,
+                thinking_config=_NO_THINKING,
+            ),
+        )
+    except Exception as exc:
+        logger.error("Gemini API error (import photo): %s", exc)
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
+    try:
+        return _strip_json(response.text)
+    except json.JSONDecodeError as exc:
+        logger.error("Bad import-photo JSON: %s", response.text[:500])
+        raise HTTPException(status_code=502, detail="Could not read the photo") from exc
+
+
+async def answer_question(question: str, history: str, today: str) -> str:
+    """Answer a free-form question grounded in the user's workout history."""
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    system_prompt = ASSISTANT_SYSTEM_PROMPT.format(
+        today=today,
+        history=history or "(no workouts logged yet)",
+    )
+    try:
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=question,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.3,
+            ),
+        )
+    except Exception as exc:
+        logger.error("Gemini API error (assistant): %s", exc)
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
+
+    return (response.text or "").strip()
