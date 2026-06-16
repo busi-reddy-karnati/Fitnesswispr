@@ -462,6 +462,65 @@ platform :ios do
     UI.message("PUBLIC_LINK=#{link || '(available after Beta App Review approval)'}")
   end
 
+  desc "Invite an external tester by email to an external group (default 'Public Beta')"
+  lane :invite_tester do
+    require "net/http"
+    require "json"
+    email = ENV["TESTER_EMAIL"].to_s.strip
+    UI.user_error!("Set TESTER_EMAIL") if email.empty?
+    group_name = ENV["BETA_GROUP_NAME"] || "Public Beta"
+
+    spaceship_login
+    token = Spaceship::ConnectAPI.token
+    app = Spaceship::ConnectAPI::App.find(APP_IDENTIFIER)
+
+    api = lambda do |method, path, body = nil|
+      uri = URI("https://api.appstoreconnect.apple.com#{path}")
+      klass = { get: Net::HTTP::Get, post: Net::HTTP::Post }[method]
+      req = klass.new(uri)
+      req["Authorization"] = "Bearer #{token.text}"
+      req["Content-Type"] = "application/json"
+      req.body = body.to_json if body
+      res = Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) { |h| h.request(req) }
+      [res.code.to_i, (JSON.parse(res.body) rescue {})]
+    end
+
+    code, resp = api.call(:get, "/v1/apps/#{app.id}/betaGroups?limit=200")
+    group = (resp["data"] || []).find { |g| g.dig("attributes", "name") == group_name }
+    UI.user_error!("External group '#{group_name}' not found — run `fastlane public_beta` first") unless group
+    gid = group["id"]
+
+    attrs = { email: email }
+    attrs[:firstName] = ENV["TESTER_FIRST"] if ENV["TESTER_FIRST"].to_s.strip != ""
+    attrs[:lastName] = ENV["TESTER_LAST"] if ENV["TESTER_LAST"].to_s.strip != ""
+
+    code, resp = api.call(:post, "/v1/betaTesters", {
+      data: {
+        type: "betaTesters",
+        attributes: attrs,
+        relationships: { betaGroups: { data: [{ type: "betaGroups", id: gid }] } }
+      }
+    })
+    if [200, 201].include?(code)
+      UI.success("Invited #{email} to '#{group_name}'")
+    elsif code == 409
+      # Tester already exists — just add them to this group.
+      code2, list = api.call(:get, "/v1/betaTesters?filter[email]=#{URI.encode_www_form_component(email)}")
+      tid = (list["data"] || []).first&.dig("id")
+      if tid
+        ac, _ = api.call(:post, "/v1/betaGroups/#{gid}/relationships/betaTesters", {
+          data: [{ type: "betaTesters", id: tid }]
+        })
+        UI.success("Added existing tester #{email} to '#{group_name}' (#{ac})")
+      else
+        UI.important("Tester exists but couldn't be located to add to group")
+      end
+    else
+      detail = (resp.dig("errors", 0, "detail") rescue resp)
+      UI.important("Invite returned #{code}: #{detail}")
+    end
+  end
+
   desc "Print the public TestFlight link and review status"
   lane :public_beta_status do
     require "net/http"
