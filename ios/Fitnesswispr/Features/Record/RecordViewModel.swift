@@ -170,6 +170,22 @@ final class RecordViewModel: ObservableObject {
         transcript = ""
         audioLevels = Array(repeating: 0, count: 30)
     }
+
+    /// Tears down any in-progress capture without parsing — used when the
+    /// recorder sheet is dismissed mid-recording.
+    func cancelRecording() {
+        if case .recording = state {
+            audioEngine.stop()
+            audioEngine.inputNode.removeTap(onBus: 0)
+            recognitionRequest?.endAudio()
+            recognitionTask?.cancel()
+            recognitionRequest = nil
+            recognitionTask = nil
+        }
+        state = .idle
+        transcript = ""
+        audioLevels = Array(repeating: 0, count: 30)
+    }
 }
 
 struct ParseContext: Encodable {

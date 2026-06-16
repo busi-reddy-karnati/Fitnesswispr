@@ -11,11 +11,16 @@ targets:
     platform: iOS
     sources:
       - path: Fitnesswispr
+    entitlements:
+      path: Fitnesswispr/Fitnesswispr.entitlements
+      properties:
+        com.apple.developer.healthkit: true
+        com.apple.developer.healthkit.access: []
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.fitnesswispr.app
         MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "4"
+        CURRENT_PROJECT_VERSION: "8"
         TARGETED_DEVICE_FAMILY: "1"
         SWIFT_VERSION: "5.0"
         GENERATE_INFOPLIST_FILE: NO
@@ -40,6 +45,8 @@ targets:
           - UIInterfaceOrientationPortrait
         NSSpeechRecognitionUsageDescription: "SpotRep uses speech recognition to log your workouts by voice."
         NSMicrophoneUsageDescription: "SpotRep needs the microphone to record your spoken workout."
+        NSHealthShareUsageDescription: "SpotRep reads your workout history from Apple Health to show your training consistency."
+        NSHealthUpdateUsageDescription: "SpotRep only reads your workout history for consistency and does not write data to Apple Health."
         API_BASE_URL: "http://52.54.56.116:8000"
         ITSAppUsesNonExemptEncryption: false
         NSAppTransportSecurity:

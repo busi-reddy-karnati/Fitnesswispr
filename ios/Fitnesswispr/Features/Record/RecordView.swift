@@ -2,6 +2,8 @@ import SwiftUI
 
 struct RecordView: View {
     @StateObject private var vm: RecordViewModel
+    @ObservedObject private var coordinator = QuickActionCoordinator.shared
+    @Environment(\.dismiss) private var dismiss
 
     init() {
         _vm = StateObject(wrappedValue: RecordViewModel(preferences: UserPreferences()))
@@ -31,7 +33,42 @@ struct RecordView: View {
                 }
             }
             .navigationTitle("Record Workout")
-            .onAppear { vm.onAppear() }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { dismiss() } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+            }
+            .onAppear {
+                vm.onAppear()
+                maybeAutoStart()
+            }
+            .onChange(of: coordinator.autoStartRecording) { _, newValue in
+                if newValue { maybeAutoStart() }
+            }
+            .onDisappear { vm.cancelRecording() }
+        }
+    }
+
+    /// Starts recording automatically when launched via a quick action / Action Button.
+    private func maybeAutoStart() {
+        guard coordinator.autoStartRecording else { return }
+        coordinator.autoStartRecording = false
+        Task {
+            let granted = await vm.requestPermissions()
+            guard granted else { return }
+            switch vm.state {
+            case .idle:
+                vm.startRecording()
+            case .saved, .error:
+                vm.reset()
+                vm.startRecording()
+            default:
+                break
+            }
         }
     }
 
@@ -77,13 +114,15 @@ struct RecordView: View {
     }
 
     private var savedView: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 16) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 72))
                 .foregroundColor(.green)
             Text("Workout Saved").font(.title2.weight(.semibold))
-            PrimaryButton(title: "Record Another") { vm.reset() }
+            PrimaryButton(title: "Done") { dismiss() }
                 .padding(.horizontal)
+            Button("Record another") { vm.reset() }
+                .font(.subheadline)
         }
     }
 
