@@ -15,7 +15,10 @@ Context: The user's last known body weight is {body_weight_lbs} lbs. If body wei
 
 Parsing rules:
 1. Expand shorthand: "3 sets of 10 at 225" → 3 set objects with set_number 1, 2, 3 each having reps=10, weight=225.
-2. "then" / "after that" / "next" separates distinct exercises.
+2. A NEW exercise begins whenever a new exercise name appears. Words like "then" / "after that" / "next" are OPTIONAL cues, not required — split on the exercise names themselves. Weight, reps, or sets stated immediately BEFORE or AFTER an exercise name belong to that exercise. Examples:
+   - "225 pounds bench press 125 pounds leg press" → two exercises: Bench Press (weight 225) and Leg Press (weight 125).
+   - "bench press 225 squat 315" → two exercises.
+2a. Exercise names are often garbled by speech-to-text. Map any unclear, misspelled, or phonetically-off name to the CLOSEST standard gym exercise and output the clean canonical name (e.g. "lakh press" → "Leg Press", "incline dumbell" → "Incline Dumbbell Press", "tricep rope" → "Tricep Pushdown", "lat pull" → "Lat Pulldown"). Never output gibberish as the exercise name; always pick the nearest real exercise.
 3. "bodyweight is 180" or "I weigh 180" → set body_weight_lbs on the session object, NOT on the exercise.
 4. "20 min treadmill" or "30 minutes cardio" → set cardio_notes string (e.g. "20 min treadmill").
 5. When unit is not stated, infer from unit_preference: {unit_preference}.
