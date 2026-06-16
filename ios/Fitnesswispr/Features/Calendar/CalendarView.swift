@@ -7,22 +7,25 @@ struct CalendarView: View {
     private let dayLabels = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
 
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 0) {
-                monthHeader
-                weekdayRow
-                calendarGrid
-                Spacer()
-            }
-            .navigationTitle("Calendar")
-            .task { await vm.fetchCalendar() }
-            .sheet(item: Binding(
-                get: { vm.selectedDate.map { IdentifiableString(value: $0) } },
-                set: { _ in vm.selectedDate = nil }
-            )) { item in
-                DayWorkoutSheet(dateStr: item.value, sessions: vm.selectedSessions)
-                    .presentationDetents([.medium, .large])
-            }
+        VStack(spacing: 0) {
+            monthHeader
+            weekdayRow
+            calendarGrid
+            Spacer()
+        }
+        .navigationTitle("Calendar")
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await vm.fetchCalendar() }
+        .sheet(item: Binding(
+            get: { vm.selectedDate.map { IdentifiableString(value: $0) } },
+            set: { _ in vm.selectedDate = nil }
+        )) { item in
+            DayWorkoutSheet(
+                dateStr: item.value,
+                sessions: vm.selectedSessions,
+                onChanged: { Task { await vm.fetchCalendar() } }
+            )
+            .presentationDetents([.medium, .large])
         }
     }
 

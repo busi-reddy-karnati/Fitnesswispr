@@ -10,6 +10,11 @@ venv/
 .env
 *.pem
 
+# Local SQLite dev database
+*.db
+*.db-journal
+*.sqlite3
+
 # macOS
 .DS_Store
 
