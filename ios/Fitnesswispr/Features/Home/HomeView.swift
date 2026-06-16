@@ -62,6 +62,7 @@ struct HomeView: View {
             .task {
                 profile.pushProfileIfNeeded()
                 profile.refreshLinkedProfiles()
+                profile.reconcileSpotting()
                 await store.loadIfNeeded()
             }
             .refreshable { await store.load() }

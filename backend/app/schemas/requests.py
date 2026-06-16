@@ -33,6 +33,12 @@ class ProfileUpdateRequest(BaseModel):
     name: str | None = None
 
 
+class GrantCreateRequest(BaseModel):
+    grantee_uuid: str
+    access: str = "read"
+    grantee_name: str | None = None
+
+
 class HealthWorkoutItem(BaseModel):
     workout_date: date
     category: str

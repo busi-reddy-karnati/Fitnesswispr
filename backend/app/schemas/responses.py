@@ -35,6 +35,21 @@ class ProfileResponse(BaseModel):
     has_avatar: bool = False
 
 
+class GrantResponse(BaseModel):
+    """A spotter the owner has granted access to."""
+    owner_uuid: str
+    grantee_uuid: str
+    access: str
+    grantee_name: str | None = None
+
+
+class SpottingResponse(BaseModel):
+    """A profile the current user is spotting (i.e. has been granted access to)."""
+    owner_uuid: str
+    owner_name: str | None = None
+    access: str
+
+
 class HealthWorkoutResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

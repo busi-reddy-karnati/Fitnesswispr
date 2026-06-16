@@ -35,6 +35,18 @@ enum APIEndpoints {
         URL(string: "\(baseURL)/api/v1/profile/\(deviceUUID)/avatar")!
     }
 
+    static func grants(owner: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(owner)/grants")!
+    }
+
+    static func grant(owner: String, grantee: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(owner)/grants/\(grantee)")!
+    }
+
+    static func spotting(_ deviceUUID: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(deviceUUID)/spotting")!
+    }
+
     static func health(deviceUUID: String, startDate: String? = nil, endDate: String? = nil) -> URL {
         var components = URLComponents(string: "\(baseURL)/api/v1/health/days")!
         var items = [URLQueryItem(name: "device_uuid", value: deviceUUID)]
