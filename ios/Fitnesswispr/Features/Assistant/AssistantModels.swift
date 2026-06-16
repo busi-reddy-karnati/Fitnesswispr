@@ -35,6 +35,9 @@ struct ChatMessage: Identifiable {
 struct Clarification {
     enum Kind {
         case exercise
+        /// A generic exercise name (e.g. "Squats") that has more specific
+        /// variants in the user's history to choose from.
+        case variant
         case weight
         case reps
         case sets

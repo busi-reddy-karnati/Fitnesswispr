@@ -14,6 +14,9 @@ final class AssistantViewModel: ObservableObject {
     /// Exercises the user has logged recently, offered as quick options when we
     /// need to ask which exercise a set belongs to.
     private var recentExercises: [String] = []
+    /// Every distinct exercise name the user has logged (original case, most
+    /// recent first), used to offer specific variants of a generic name.
+    private var allExerciseNames: [String] = []
     /// Most-frequent weights the user has used, per exercise (lowercased name).
     private var weightsByExercise: [String: [Double]] = [:]
     /// Most-frequent set counts and reps across the user's history.
@@ -86,6 +89,7 @@ final class AssistantViewModel: ObservableObject {
         }
 
         recentExercises = Array(nameOrder.prefix(8))
+        allExerciseNames = nameOrder
         weightsByExercise = weightTally.mapValues { tally in
             tally.sorted { $0.value > $1.value }.map(\.key)
         }
@@ -148,6 +152,11 @@ final class AssistantViewModel: ObservableObject {
                 await logWorkout(combined, replacing: thinkingID, allowQuestionFallback: false)
                 isBusy = false
             }
+        case .variant:
+            guard var draft = clarification.draft, !draft.exercises.isEmpty else { return }
+            let chosen = answer.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !chosen.isEmpty { draft.exercises[0].name = chosen }
+            present(draft, in: appendThinking())
         case .weight, .reps, .sets:
             guard var draft = clarification.draft else { return }
             apply(field: clarification.kind, answer: answer, to: &draft)
@@ -247,6 +256,7 @@ final class AssistantViewModel: ObservableObject {
     /// order, skipping anything we've already asked about for this workout.
     private func firstMissingField(_ draft: ParsedSession) -> Clarification.Kind? {
         guard let ex = draft.exercises.first, !ex.sets.isEmpty else { return nil }
+        if !askedFields.contains(.variant), !variantSuggestions(for: ex.name).isEmpty { return .variant }
         if ex.sets.contains(where: { $0.durationSeconds != nil }) { return nil } // timed hold
         let hasWeight = ex.sets.contains { $0.weight != nil }
         let hasReps = ex.sets.contains { $0.reps != nil }
@@ -260,6 +270,7 @@ final class AssistantViewModel: ObservableObject {
         let name = draft?.exercises.first?.name ?? "that"
         switch field {
         case .exercise: return "Got the sets — which exercise was that? Tap one or type it."
+        case .variant:  return "Which \(name.lowercased())? Tap one or type it."
         case .weight:   return "What weight for \(name)? Tap one or type it."
         case .reps:     return "How many reps? Tap one or type it."
         case .sets:     return "How many sets? Tap one or type it."
@@ -272,12 +283,20 @@ final class AssistantViewModel: ObservableObject {
             return recentExercises.isEmpty
                 ? ["Bench Press", "Squat", "Deadlift", "Overhead Press", "Lat Pulldown"]
                 : Array(recentExercises.prefix(6))
-        case .weight:
-            let unit = draft?.exercises.first?.sets.first?.weightUnit ?? preferences.unitPreference
-            let key = (draft?.exercises.first?.name ?? "").lowercased()
-            var opts = (weightsByExercise[key] ?? []).prefix(3).map { "\(formatNumber($0)) \(unit)" }
-            opts.append("Bodyweight")
+        case .variant:
+            let name = draft?.exercises.first?.name ?? ""
+            var opts = Array(variantSuggestions(for: name).prefix(5))
+            // Keep the generic term itself as an option.
+            if !opts.contains(where: { $0.caseInsensitiveCompare(name) == .orderedSame }) {
+                opts.append(name)
+            }
             return opts
+        case .weight:
+            let name = draft?.exercises.first?.name ?? ""
+            let unit = draft?.exercises.first?.sets.first?.weightUnit ?? preferences.unitPreference
+            var opts = weightSuggestions(for: name).prefix(3).map { "\(formatNumber($0)) \(unit)" }
+            opts.append("Bodyweight")
+            return Array(opts)
         case .reps:
             let freq = frequentReps.filter { $0 > 0 }.prefix(3).map(String.init)
             return freq.isEmpty ? ["8", "10", "12"] : Array(freq)
@@ -317,7 +336,7 @@ final class AssistantViewModel: ObservableObject {
                     durationSeconds: template?.durationSeconds
                 )
             }
-        case .exercise:
+        case .exercise, .variant:
             break
         }
     }
@@ -332,6 +351,62 @@ final class AssistantViewModel: ObservableObject {
             "mountain climber", "leg raise", "hanging"
         ]
         return bodyweight.contains { n.contains($0) }
+    }
+
+    /// Weights to suggest for an exercise. Falls back to fuzzy matching so that
+    /// typing "squats" still surfaces the weights logged for "goblet squat".
+    private func weightSuggestions(for name: String) -> [Double] {
+        let key = name.lowercased().trimmingCharacters(in: .whitespaces)
+        if let exact = weightsByExercise[key], !exact.isEmpty { return exact }
+
+        let queryTokens = movementTokens(key)
+        guard !queryTokens.isEmpty else { return [] }
+
+        // Rank history exercises by how well they overlap with what was typed,
+        // then flatten their weights (best match first) and de-duplicate.
+        let ranked = weightsByExercise
+            .compactMap { (exKey, weights) -> (weights: [Double], score: Int)? in
+                guard !weights.isEmpty else { return nil }
+                let shared = queryTokens.intersection(movementTokens(exKey)).count
+                let containment = (exKey.contains(key) || key.contains(exKey)) ? 1 : 0
+                let score = shared * 2 + containment
+                return score > 0 ? (weights, score) : nil
+            }
+            .sorted { $0.score > $1.score }
+
+        var seen = Set<Double>()
+        var result: [Double] = []
+        for w in ranked.flatMap(\.weights) where seen.insert(w).inserted { result.append(w) }
+        return result
+    }
+
+    /// More specific variants of a (possibly generic) exercise name found in the
+    /// user's history. Typing "squats" surfaces "Goblet Squat", "Hack Squat", …
+    private func variantSuggestions(for name: String) -> [String] {
+        let query = movementTokens(name)
+        guard !query.isEmpty else { return [] }
+        let key = name.lowercased().trimmingCharacters(in: .whitespaces)
+        return allExerciseNames.filter { candidate in
+            let candidateKey = candidate.lowercased().trimmingCharacters(in: .whitespaces)
+            guard candidateKey != key else { return false }
+            let tokens = movementTokens(candidate)
+            // Same movement, but a more specific phrasing (e.g. "goblet squat").
+            return query.isSubset(of: tokens) && tokens.count > query.count
+        }
+    }
+
+    /// Lower-cased movement words for fuzzy matching, dropping equipment/filler
+    /// words and crudely singularising ("squats" -> "squat").
+    private func movementTokens(_ s: String) -> Set<String> {
+        let filler: Set<String> = [
+            "the", "a", "with", "and", "of", "on", "machine",
+            "barbell", "dumbbell", "cable", "smith"
+        ]
+        let tokens = s.split { !$0.isLetter }
+            .map { String($0).lowercased() }
+            .map { $0.count > 3 && $0.hasSuffix("s") ? String($0.dropLast()) : $0 }
+            .filter { !$0.isEmpty && !filler.contains($0) }
+        return Set(tokens)
     }
 
     private func firstNumber(in text: String) -> Double? {
