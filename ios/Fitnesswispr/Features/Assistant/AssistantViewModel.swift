@@ -454,28 +454,29 @@ final class AssistantViewModel: ObservableObject {
     }
 
     func saveDraft(_ parsed: ParsedSession, date: Date, draftID: UUID) {
-        isBusy = true
+        // Optimistic: confirm in the chat immediately, save in the background.
+        let count = parsed.exercises.count
+        replace(draftID, with: .saved("Logged \(count) exercise\(count == 1 ? "" : "s") ✓"))
+
+        let req = CreateSessionRequest(
+            deviceUuid: targetUUID,
+            workoutDate: date.apiDateString,
+            source: "assistant",
+            rawTranscript: nil,
+            workoutType: parsed.workoutType,
+            bodyWeightLbs: parsed.bodyWeightLbs,
+            cardioNotes: parsed.cardioNotes,
+            sessionNotes: nil,
+            exercises: parsed.exercises
+        )
         Task {
-            let req = CreateSessionRequest(
-                deviceUuid: targetUUID,
-                workoutDate: date.apiDateString,
-                source: "assistant",
-                rawTranscript: nil,
-                workoutType: parsed.workoutType,
-                bodyWeightLbs: parsed.bodyWeightLbs,
-                cardioNotes: parsed.cardioNotes,
-                sessionNotes: nil,
-                exercises: parsed.exercises
-            )
             do {
-                let _: WorkoutSession = try await APIClient.shared.post(APIEndpoints.sessions, body: req)
-                let count = parsed.exercises.count
-                replace(draftID, with: .saved("Logged \(count) exercise\(count == 1 ? "" : "s") ✓"))
-                NotificationCenter.default.post(name: .workoutLogged, object: nil)
+                let saved: WorkoutSession = try await APIClient.shared.post(APIEndpoints.sessions, body: req)
+                // Notify with the saved session so listeners can update instantly.
+                NotificationCenter.default.post(name: .workoutLogged, object: saved)
             } catch {
-                appendAssistant(.text("Couldn't save that: \(error.localizedDescription)"))
+                appendAssistant(.text("Hmm, that didn't save — \(error.localizedDescription). Want to try again?"))
             }
-            isBusy = false
         }
     }
 

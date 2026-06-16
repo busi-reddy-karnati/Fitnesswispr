@@ -33,6 +33,17 @@ struct Profile: Codable, Identifiable, Hashable {
     }
 }
 
+/// Shared profile info fetched from the backend (current name, photo flag).
+struct ProfileInfo: Decodable {
+    let deviceUuid: String
+    let name: String?
+    let hasAvatar: Bool
+}
+
+struct ProfileUpdateRequest: Encodable {
+    let name: String?
+}
+
 /// Payload encoded into an invite code/link when sharing a profile.
 struct ProfileInvite: Codable {
     var v: Int = 1

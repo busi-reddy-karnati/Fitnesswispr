@@ -14,6 +14,7 @@ class Profile(Base):
     __tablename__ = "profiles"
 
     device_uuid: Mapped[str] = mapped_column(String(36), primary_key=True)
+    display_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     avatar: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     avatar_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

@@ -6,7 +6,6 @@ struct SessionDetailView: View {
     @State private var session: WorkoutSession
     @State private var isEditing = false
     @State private var pendingDelete: Exercise?
-    @State private var working = false
     @State private var error: String?
     @State private var editedDate = Date()
 
@@ -99,11 +98,6 @@ struct SessionDetailView: View {
                 }
             }
         }
-        .overlay {
-            if working {
-                LoadingOverlay(message: "Saving...")
-            }
-        }
         .confirmationDialog(
             "Delete this exercise?",
             isPresented: Binding(
@@ -123,7 +117,11 @@ struct SessionDetailView: View {
         guard let sessionId = session.sessionId else { return }
         let newStr = editedDate.apiDateString
         guard newStr != session.workoutDate else { return }
-        working = true
+
+        // Optimistic: reflect the new date immediately, sync in the background.
+        let previous = session
+        session.workoutDate = newStr
+        onUpdated?(session)
         Task {
             do {
                 let req = UpdateSessionRequest(workoutDate: newStr)
@@ -131,12 +129,12 @@ struct SessionDetailView: View {
                     APIEndpoints.session(sessionId), body: req
                 )
                 session = updated
-                working = false
                 onUpdated?(updated)
                 onChanged?()
             } catch {
+                session = previous
+                onUpdated?(previous)
                 self.error = "Couldn't change the date: \(error.localizedDescription)"
-                working = false
             }
         }
     }
@@ -144,31 +142,40 @@ struct SessionDetailView: View {
     private func delete(_ exercise: Exercise) {
         guard let sessionId = session.sessionId else { return }
         pendingDelete = nil
+        let previous = session
         let remaining = session.exercises.filter { $0.id != exercise.id }
-        working = true
+
+        if remaining.isEmpty {
+            // Last exercise — remove the whole session. Dismiss immediately.
+            onDeleted?(sessionId)
+            onChanged?()
+            dismiss()
+            Task {
+                do {
+                    try await APIClient.shared.delete(APIEndpoints.session(sessionId))
+                } catch {
+                    // Best-effort; the parent can recover on its next refresh.
+                }
+            }
+            return
+        }
+
+        // Optimistic: drop the exercise now, sync in the background.
+        session.exercises = remaining
+        onUpdated?(session)
         Task {
             do {
-                if remaining.isEmpty {
-                    // Last exercise — remove the whole session.
-                    try await APIClient.shared.delete(APIEndpoints.session(sessionId))
-                    working = false
-                    onDeleted?(sessionId)
-                    onChanged?()
-                    dismiss()
-                } else {
-                    let req = UpdateSessionRequest(exercises: remaining)
-                    let updated: WorkoutSession = try await APIClient.shared.put(
-                        APIEndpoints.session(sessionId), body: req
-                    )
-                    session = updated
-                    working = false
-                    if session.exercises.isEmpty { isEditing = false }
-                    onUpdated?(updated)
-                    onChanged?()
-                }
+                let req = UpdateSessionRequest(exercises: remaining)
+                let updated: WorkoutSession = try await APIClient.shared.put(
+                    APIEndpoints.session(sessionId), body: req
+                )
+                session = updated
+                onUpdated?(updated)
+                onChanged?()
             } catch {
+                session = previous
+                onUpdated?(previous)
                 self.error = "Couldn't delete: \(error.localizedDescription)"
-                working = false
             }
         }
     }

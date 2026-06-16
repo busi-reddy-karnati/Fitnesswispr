@@ -29,6 +29,12 @@ class DeviceContextResponse(BaseModel):
     last_updated: datetime | None = None
 
 
+class ProfileResponse(BaseModel):
+    device_uuid: str
+    name: str | None = None
+    has_avatar: bool = False
+
+
 class HealthWorkoutResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

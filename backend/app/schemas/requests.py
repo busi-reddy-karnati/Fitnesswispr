@@ -29,6 +29,10 @@ class ParseRequest(BaseModel):
     context: dict = Field(default_factory=dict)
 
 
+class ProfileUpdateRequest(BaseModel):
+    name: str | None = None
+
+
 class HealthWorkoutItem(BaseModel):
     workout_date: date
     category: str

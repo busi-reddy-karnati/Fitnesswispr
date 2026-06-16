@@ -10,7 +10,7 @@ import UIKit
 final class ProfileStore: ObservableObject {
     static let shared = ProfileStore()
 
-    @Published var myName: String { didSet { persist() } }
+    @Published var myName: String { didSet { persist(); scheduleNamePush() } }
     @Published var age: Int { didSet { persist() } }            // 0 = unset
     @Published var heightCm: Double { didSet { persist() } }    // 0 = unset
     @Published var weightLbs: Double { didSet { persist() } }   // 0 = unset
@@ -92,14 +92,63 @@ final class ProfileStore: ObservableObject {
         if let data { uploadAvatar(data) }
     }
 
-    private var didPushAvatar = false
+    private var didPushProfile = false
+    private var namePushTask: Task<Void, Never>?
 
-    /// Best-effort push of an already-set photo so spotters can see it (e.g. on
-    /// first launch after this feature shipped). Safe to call repeatedly.
-    func pushAvatarIfNeeded() {
-        guard !didPushAvatar, let data = avatarData else { return }
-        didPushAvatar = true
-        uploadAvatar(data)
+    /// Best-effort push of profile info (name + photo) so spotters see it.
+    /// Safe to call repeatedly; only does work once per launch.
+    func pushProfileIfNeeded() {
+        guard !didPushProfile else { return }
+        didPushProfile = true
+        if let data = avatarData { uploadAvatar(data) }
+        pushName()
+    }
+
+    /// Debounced name push — `myName` changes on every keystroke while editing.
+    private func scheduleNamePush() {
+        namePushTask?.cancel()
+        namePushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            self?.pushName()
+        }
+    }
+
+    private func pushName() {
+        let name = myName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let uuid = meID
+        Task {
+            let body = ProfileUpdateRequest(name: name)
+            let _: ProfileInfo? = try? await APIClient.shared.put(APIEndpoints.profile(uuid), body: body)
+        }
+    }
+
+    /// Refresh the names of people you're spotting from the backend, so a name
+    /// change on their side shows up for you.
+    func refreshLinkedProfiles() {
+        let targets = linked
+        guard !targets.isEmpty else { return }
+        Task {
+            var updates: [(id: String, name: String)] = []
+            for p in targets {
+                if let info: ProfileInfo = try? await APIClient.shared.get(APIEndpoints.profile(p.id)),
+                   let name = info.name, !name.isEmpty {
+                    updates.append((p.id, name))
+                }
+            }
+            let resolved = updates
+            await MainActor.run { ProfileStore.shared.applyLinkedNames(resolved) }
+        }
+    }
+
+    @MainActor
+    private func applyLinkedNames(_ updates: [(id: String, name: String)]) {
+        for u in updates {
+            if let idx = linked.firstIndex(where: { $0.id == u.id }), linked[idx].name != u.name {
+                linked[idx].name = u.name
+            }
+        }
     }
 
     private func uploadAvatar(_ data: Data) {

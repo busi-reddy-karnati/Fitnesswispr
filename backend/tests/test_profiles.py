@@ -24,6 +24,24 @@ async def test_avatar_round_trip(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
+async def test_profile_name_round_trip(async_client: AsyncClient) -> None:
+    device = str(uuid.uuid4())
+    # Unknown profile reads as empty, not an error.
+    g0 = await async_client.get(f"/api/v1/profile/{device}")
+    assert g0.status_code == 200
+    assert g0.json()["name"] is None
+
+    put = await async_client.put(f"/api/v1/profile/{device}", json={"name": "Kratika"})
+    assert put.status_code == 200
+    assert put.json()["name"] == "Kratika"
+
+    # A name change is reflected on the next read (what a spotter fetches).
+    await async_client.put(f"/api/v1/profile/{device}", json={"name": "Kratika S"})
+    g1 = await async_client.get(f"/api/v1/profile/{device}")
+    assert g1.json()["name"] == "Kratika S"
+
+
+@pytest.mark.asyncio
 async def test_avatar_missing_is_404(async_client: AsyncClient) -> None:
     device = str(uuid.uuid4())
     get = await async_client.get(f"/api/v1/profile/{device}/avatar")

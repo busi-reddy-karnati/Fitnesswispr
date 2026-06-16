@@ -99,19 +99,21 @@ final class ProgressStore: ObservableObject {
             self.error = error.localizedDescription
         }
 
-        // Apple Health enriches consistency. For people you spot, it comes from
-        // the backend (pushed from their device). For yourself, live HealthKit
-        // is authoritative and also gets pushed so your spotters can see it.
-        appleDays = await fetchBackendHealth(
-            deviceUUID, start: start.apiDateString, end: end.apiDateString
-        )
+        // Apple Health enriches consistency. For yourself, live HealthKit is
+        // authoritative (no extra network round-trip), and we push it so your
+        // spotters can see it. For people you spot, fetch their pushed days.
         if deviceUUID == Identity.current {
             if HealthKitManager.shared.didSync {
                 appleDays = HealthKitManager.shared.workoutsByDay
                 Task { [weak self] in await self?.pushHealthToBackend(HealthKitManager.shared.workoutsByDay) }
             } else {
+                appleDays = [:]
                 Task { [weak self] in await self?.syncAppleFitness() }
             }
+        } else {
+            appleDays = await fetchBackendHealth(
+                deviceUUID, start: start.apiDateString, end: end.apiDateString
+            )
         }
     }
 

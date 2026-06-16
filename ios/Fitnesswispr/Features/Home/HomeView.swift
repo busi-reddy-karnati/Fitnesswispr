@@ -60,7 +60,8 @@ struct HomeView: View {
                 .presentationDetents([.medium, .large])
             }
             .task {
-                profile.pushAvatarIfNeeded()
+                profile.pushProfileIfNeeded()
+                profile.refreshLinkedProfiles()
                 await store.loadIfNeeded()
             }
             .refreshable { await store.load() }
@@ -70,6 +71,15 @@ struct HomeView: View {
             .onChange(of: coordinator.showRecorder) { _, isShowing in
                 // Refresh once the recorder closes so a just-logged workout appears.
                 if !isShowing { Task { await store.load() } }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .workoutLogged)) { note in
+                // Instant update from chat/Siri: apply the saved session locally
+                // when we have it, otherwise refetch.
+                if let saved = note.object as? WorkoutSession {
+                    store.applyLocally(saved)
+                } else {
+                    Task { await store.load() }
+                }
             }
         }
     }

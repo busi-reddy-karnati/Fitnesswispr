@@ -8,11 +8,59 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
 from app.models.profile import Profile
+from app.schemas.requests import ProfileUpdateRequest
+from app.schemas.responses import ProfileResponse
 
 router = APIRouter()
 
 # Reject oversized uploads; avatars are downscaled on the device first.
 MAX_AVATAR_BYTES = 3 * 1024 * 1024  # 3 MB
+
+
+async def _get_or_create(db: AsyncSession, key: str) -> Profile:
+    result = await db.execute(select(Profile).where(Profile.device_uuid == key))
+    profile = result.scalars().first()
+    if profile is None:
+        profile = Profile(device_uuid=key)
+        db.add(profile)
+    return profile
+
+
+@router.get("/profile/{device_uuid}", response_model=ProfileResponse)
+async def get_profile(
+    device_uuid: uuid.UUID,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ProfileResponse:
+    """Return shared profile info (current display name, whether a photo exists)."""
+    key = str(device_uuid)
+    result = await db.execute(select(Profile).where(Profile.device_uuid == key))
+    profile = result.scalars().first()
+    if profile is None:
+        return ProfileResponse(device_uuid=key, name=None, has_avatar=False)
+    return ProfileResponse(
+        device_uuid=key,
+        name=profile.display_name,
+        has_avatar=profile.avatar is not None,
+    )
+
+
+@router.put("/profile/{device_uuid}", response_model=ProfileResponse)
+async def update_profile(
+    device_uuid: uuid.UUID,
+    body: ProfileUpdateRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> ProfileResponse:
+    """Upsert shared profile info (currently the display name)."""
+    key = str(device_uuid)
+    profile = await _get_or_create(db, key)
+    if body.name is not None:
+        profile.display_name = body.name
+    await db.flush()
+    return ProfileResponse(
+        device_uuid=key,
+        name=profile.display_name,
+        has_avatar=profile.avatar is not None,
+    )
 
 
 @router.put("/profile/{device_uuid}/avatar", status_code=204)
