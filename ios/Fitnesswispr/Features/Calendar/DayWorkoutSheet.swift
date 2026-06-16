@@ -5,6 +5,10 @@ struct DayWorkoutSheet: View {
     let sessions: [WorkoutSession]
     var appleWorkouts: [AppleFitnessWorkout] = []
     var onChanged: (() -> Void)? = nil
+    /// Optimistic callbacks — preferred over `onChanged` when the caller can
+    /// update its cache without a full refetch.
+    var onUpdated: ((WorkoutSession) -> Void)? = nil
+    var onDeleted: ((String) -> Void)? = nil
 
     private var isEmpty: Bool { sessions.isEmpty && appleWorkouts.isEmpty }
 
@@ -18,7 +22,12 @@ struct DayWorkoutSheet: View {
                         Section("Logged in SpotRep") {
                             ForEach(sessions) { session in
                                 NavigationLink {
-                                    SessionDetailView(session: session, onChanged: onChanged)
+                                    SessionDetailView(
+                                        session: session,
+                                        onChanged: onChanged,
+                                        onUpdated: onUpdated,
+                                        onDeleted: onDeleted
+                                    )
                                 } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {

@@ -11,10 +11,21 @@ struct SessionDetailView: View {
 
     /// Called after a successful change so parent screens can refresh.
     private let onChanged: (() -> Void)?
+    /// Optimistic callbacks — when provided, parents update their cache without
+    /// a full refetch (instant UI). Falls back to `onChanged` otherwise.
+    private let onUpdated: ((WorkoutSession) -> Void)?
+    private let onDeleted: ((String) -> Void)?
 
-    init(session: WorkoutSession, onChanged: (() -> Void)? = nil) {
+    init(
+        session: WorkoutSession,
+        onChanged: (() -> Void)? = nil,
+        onUpdated: ((WorkoutSession) -> Void)? = nil,
+        onDeleted: ((String) -> Void)? = nil
+    ) {
         _session = State(initialValue: session)
         self.onChanged = onChanged
+        self.onUpdated = onUpdated
+        self.onDeleted = onDeleted
     }
 
     private var canEdit: Bool { ProfileStore.shared.active.canWrite }
@@ -100,6 +111,7 @@ struct SessionDetailView: View {
                     // Last exercise — remove the whole session.
                     try await APIClient.shared.delete(APIEndpoints.session(sessionId))
                     working = false
+                    onDeleted?(sessionId)
                     onChanged?()
                     dismiss()
                 } else {
@@ -110,6 +122,7 @@ struct SessionDetailView: View {
                     session = updated
                     working = false
                     if session.exercises.isEmpty { isEditing = false }
+                    onUpdated?(updated)
                     onChanged?()
                 }
             } catch {

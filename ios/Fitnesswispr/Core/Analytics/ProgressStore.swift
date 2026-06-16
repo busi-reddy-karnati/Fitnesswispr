@@ -44,11 +44,26 @@ final class ProgressStore: ObservableObject {
     @Published var loaded = false
     @Published var error: String?
 
+    private var inFlight: Task<Void, Never>?
+
     func loadIfNeeded() async {
         if !loaded { await load() }
     }
 
+    /// Latest-wins load. The fetch runs in an unstructured task so SwiftUI
+    /// tearing down `.task` / `.refreshable` can't surface a spurious
+    /// "cancelled" error; a newer load simply supersedes the previous one.
     func load() async {
+        inFlight?.cancel()
+        let task = Task<Void, Never> { [weak self] in
+            guard let self else { return }
+            await self.performLoad()
+        }
+        inFlight = task
+        await task.value
+    }
+
+    private func performLoad() async {
         isLoading = true
         defer { isLoading = false }
         let deviceUUID = ProfileStore.shared.activeID
@@ -64,12 +79,22 @@ final class ProgressStore: ObservableObject {
             sessions = try await APIClient.shared.get(url)
             loaded = true
             error = nil
+        } catch is CancellationError {
+            return // superseded — not a real failure
+        } catch let urlError as URLError where urlError.code == .cancelled {
+            return
         } catch {
             self.error = error.localizedDescription
         }
-        // Apple Health only reflects this device's owner, not a linked profile.
+
+        // Apple Health enriches consistency but must never block the critical
+        // path: use cached results, and sync just once in the background.
         if deviceUUID == DeviceUUID.shared.id {
-            await syncAppleFitness()
+            if HealthKitManager.shared.didSync {
+                appleDays = HealthKitManager.shared.workoutsByDay
+            } else {
+                Task { [weak self] in await self?.syncAppleFitness() }
+            }
         } else {
             appleDays = [:]
         }
@@ -79,6 +104,24 @@ final class ProgressStore: ObservableObject {
     func syncAppleFitness() async {
         await HealthKitManager.shared.sync()
         appleDays = HealthKitManager.shared.workoutsByDay
+    }
+
+    // MARK: - Optimistic local mutations
+    // Keep the UI instant after add/edit/delete instead of waiting on a refetch.
+
+    /// Insert or replace a session in the local cache (after a create/update).
+    func applyLocally(_ session: WorkoutSession) {
+        if let id = session.sessionId,
+           let idx = sessions.firstIndex(where: { $0.sessionId == id }) {
+            sessions[idx] = session
+        } else {
+            sessions.insert(session, at: 0)
+        }
+    }
+
+    /// Drop a session from the local cache (after a delete).
+    func removeLocally(sessionId: String) {
+        sessions.removeAll { $0.sessionId == sessionId }
     }
 
     // MARK: - Consistency

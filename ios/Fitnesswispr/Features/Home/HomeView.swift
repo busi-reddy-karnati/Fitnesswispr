@@ -3,6 +3,7 @@ import SwiftUI
 struct HomeView: View {
     @StateObject private var store = ProgressStore()
     @ObservedObject private var profile = ProfileStore.shared
+    @ObservedObject private var coordinator = QuickActionCoordinator.shared
     @State private var showProfile = false
     @State private var selectedDay: IdentifiableString?
 
@@ -46,7 +47,8 @@ struct HomeView: View {
                     dateStr: item.value,
                     sessions: store.sessions(on: item.value),
                     appleWorkouts: store.appleWorkouts(on: item.value),
-                    onChanged: { Task { await store.load() } }
+                    onUpdated: { store.applyLocally($0) },
+                    onDeleted: { store.removeLocally(sessionId: $0) }
                 )
                 .presentationDetents([.medium, .large])
             }
@@ -54,6 +56,10 @@ struct HomeView: View {
             .refreshable { await store.load() }
             .onChange(of: profile.activeID) { _, _ in
                 Task { await store.load() }
+            }
+            .onChange(of: coordinator.showRecorder) { _, isShowing in
+                // Refresh once the recorder closes so a just-logged workout appears.
+                if !isShowing { Task { await store.load() } }
             }
         }
     }
@@ -107,15 +113,9 @@ struct HomeView: View {
                     .foregroundColor(.secondary)
             }
 
-            HStack {
-                Text("CONSISTENCY")
-                    .font(.caption.weight(.semibold))
-                    .foregroundColor(.secondary)
-                Spacer()
-                Text("Tap a day for details")
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
+            Text("CONSISTENCY")
+                .font(.caption.weight(.semibold))
+                .foregroundColor(.secondary)
 
             ConsistencyHeatmapView(intensities: store.dayIntensities()) { day in
                 selectedDay = IdentifiableString(value: day.apiDateString)

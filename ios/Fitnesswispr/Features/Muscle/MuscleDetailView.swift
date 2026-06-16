@@ -59,8 +59,8 @@ struct MuscleDetailView: View {
             }
         }
         .sheet(isPresented: $showManualAdd) {
-            ManualAddExerciseView(region: region) {
-                Task { await store.load() }
+            ManualAddExerciseView(region: region) { created in
+                store.applyLocally(created)
             }
         }
     }

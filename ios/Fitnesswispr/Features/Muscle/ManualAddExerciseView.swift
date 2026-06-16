@@ -4,7 +4,7 @@ import SwiftUI
 struct ManualAddExerciseView: View {
     let region: MuscleRegion
     let prefillName: String?
-    var onSaved: () -> Void
+    var onSaved: (WorkoutSession) -> Void
 
     @Environment(\.dismiss) private var dismiss
 
@@ -22,7 +22,7 @@ struct ManualAddExerciseView: View {
         var weight = ""
     }
 
-    init(region: MuscleRegion, prefillName: String? = nil, onSaved: @escaping () -> Void) {
+    init(region: MuscleRegion, prefillName: String? = nil, onSaved: @escaping (WorkoutSession) -> Void) {
         self.region = region
         self.prefillName = prefillName
         self.onSaved = onSaved
@@ -124,9 +124,9 @@ struct ManualAddExerciseView: View {
         saving = true
         Task {
             do {
-                let _: WorkoutSession = try await APIClient.shared.post(APIEndpoints.sessions, body: req)
+                let created: WorkoutSession = try await APIClient.shared.post(APIEndpoints.sessions, body: req)
                 saving = false
-                onSaved()
+                onSaved(created)
                 dismiss()
             } catch {
                 self.error = "Couldn't save: \(error.localizedDescription)"
