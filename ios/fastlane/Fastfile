@@ -549,6 +549,15 @@ platform :ios do
   desc "Build and upload to TestFlight"
   lane :beta do
     key = asc_key
+    # gym auto-injects -allowProvisioningUpdates + the App Store Connect API key
+    # auth flags into the export when a key is in context, so xcodebuild can
+    # create/refresh the Distribution cert + app-store profile on the fly.
+    # signingStyle: automatic lets it resolve the profile without a manual map.
+    export_auth = [
+      "-authenticationKeyPath", File.expand_path(ENV["ASC_KEY_PATH"]),
+      "-authenticationKeyID", ENV["ASC_KEY_ID"],
+      "-authenticationKeyIssuerID", ENV["ASC_ISSUER_ID"]
+    ].join(" ")
     build_app(
       project: "Fitnesswispr.xcodeproj",
       scheme: "Fitnesswispr",
@@ -558,7 +567,12 @@ platform :ios do
       derived_data_path: "/tmp/fw_dd_release",
       clean: true,
       export_method: "app-store",
-      xcargs: "-allowProvisioningUpdates"
+      xcargs: "-allowProvisioningUpdates",
+      export_xcargs: export_auth,
+      export_options: {
+        signingStyle: "automatic",
+        teamID: ENV["ASC_TEAM_ID"]
+      }
     )
     upload_to_testflight(
       api_key: key,
