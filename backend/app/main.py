@@ -37,6 +37,23 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         content={"detail": first.get("msg", "Your request couldn't be processed.")},
     )
 
+@app.middleware("http")
+async def limit_request_body_size(request: Request, call_next):
+    """Reject oversized requests up front (Content-Length) before reading the
+    body, protecting against memory/DB-abuse via giant payloads."""
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > settings.MAX_REQUEST_BODY_BYTES:
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "That request is too large."},
+                )
+        except ValueError:
+            pass
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,

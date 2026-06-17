@@ -21,7 +21,9 @@ class ExerciseCreate(BaseModel):
     equipment: str | None = None
     muscle_group: str | None = None
     notes: str | None = None
-    sets: list[ExerciseSetCreate] = []
+    sets: list[ExerciseSetCreate] = Field(
+        default_factory=list, max_length=settings.MAX_SETS_PER_EXERCISE
+    )
 
 
 class ParseRequest(BaseModel):
@@ -73,7 +75,9 @@ class CreateSessionRequest(BaseModel):
     cardio_notes: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
-    exercises: list[ExerciseCreate] = []
+    exercises: list[ExerciseCreate] = Field(
+        default_factory=list, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
 
 
 class UpdateSessionRequest(BaseModel):
@@ -85,4 +89,6 @@ class UpdateSessionRequest(BaseModel):
     cardio_notes: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
-    exercises: list[ExerciseCreate] | None = None
+    exercises: list[ExerciseCreate] | None = Field(
+        default=None, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
