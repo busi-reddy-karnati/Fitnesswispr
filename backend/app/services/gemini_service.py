@@ -84,6 +84,7 @@ async def parse_transcript(
                 system_instruction=system_prompt,
                 response_mime_type="application/json",
                 temperature=0.1,
+                max_output_tokens=settings.PARSE_MAX_OUTPUT_TOKENS,
             ),
         )
     except Exception as exc:
@@ -201,6 +202,7 @@ async def extract_spreadsheet_sheet(grid_text: str) -> dict:
                 response_mime_type="application/json",
                 temperature=0.1,
                 thinking_config=_NO_THINKING,
+                max_output_tokens=settings.IMPORT_MAX_OUTPUT_TOKENS,
             ),
         )
     except Exception as exc:
@@ -229,6 +231,7 @@ async def extract_photo(image_bytes: bytes, mime: str) -> dict:
                 response_mime_type="application/json",
                 temperature=0.1,
                 thinking_config=_NO_THINKING,
+                max_output_tokens=settings.IMPORT_MAX_OUTPUT_TOKENS,
             ),
         )
     except Exception as exc:
@@ -255,6 +258,7 @@ async def answer_question(question: str, history: str, today: str) -> str:
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.3,
+                max_output_tokens=settings.ASSISTANT_MAX_OUTPUT_TOKENS,
             ),
         )
     except Exception as exc:

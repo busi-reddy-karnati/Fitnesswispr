@@ -16,6 +16,8 @@ from collections import deque
 
 from fastapi import HTTPException, Request
 
+from app.config import settings
+
 
 class RateLimiter:
     """Sliding-window log limiter: at most `max_requests` per `window_seconds`."""
@@ -31,18 +33,18 @@ class RateLimiter:
         self._time = time_func
         self._hits: dict[str, deque[float]] = {}
 
-    def hit(self, key: str) -> tuple[bool, float]:
-        """Record a request for `key`.
+    def check(self, key: str) -> tuple[bool, float]:
+        """Peek whether `key` is under the limit WITHOUT recording a request.
 
-        Returns (allowed, retry_after_seconds). When not allowed, the request
-        is NOT recorded and retry_after_seconds tells the caller how long until
-        the oldest hit in the window expires.
+        Returns (allowed, retry_after_seconds). Prunes expired hits as a side
+        effect, but does not consume an allowance — call `record()` for that.
+        Splitting check/record lets a caller gate on several limiters and only
+        consume them all when every one allows (no double-charging).
         """
         now = self._time()
         hits = self._hits.get(key)
         if hits is None:
-            hits = deque()
-            self._hits[key] = hits
+            return True, 0.0
 
         cutoff = now - self.window_seconds
         while hits and hits[0] <= cutoff:
@@ -51,11 +53,23 @@ class RateLimiter:
         if len(hits) >= self.max_requests:
             retry_after = hits[0] + self.window_seconds - now
             return False, max(retry_after, 0.0)
-
-        hits.append(now)
-        # Drop the key's bookkeeping is left in place; empty deques are pruned
-        # lazily on the next hit for that key.
         return True, 0.0
+
+    def record(self, key: str) -> None:
+        """Record a request for `key` (assumes `check` already passed)."""
+        now = self._time()
+        hits = self._hits.get(key)
+        if hits is None:
+            hits = deque()
+            self._hits[key] = hits
+        hits.append(now)
+
+    def hit(self, key: str) -> tuple[bool, float]:
+        """Convenience: check then record. Returns (allowed, retry_after)."""
+        allowed, retry_after = self.check(key)
+        if allowed:
+            self.record(key)
+        return allowed, retry_after
 
     def reset(self) -> None:
         """Clear all recorded hits (used by tests)."""
@@ -71,16 +85,39 @@ def client_key(request: Request) -> str:
     return f"ip:{host}"
 
 
-def make_rate_limit_dependency(limiter: RateLimiter):
-    """Build a FastAPI dependency that enforces `limiter`, returning 429."""
+# --------------------------------------------------------------------------- #
+# Shared LLM budget — one limiter for ALL Gemini-backed endpoints (so the
+# per-device cap is a true total, not per-endpoint), plus a global ceiling
+# across all callers as an absolute cost backstop.
+# --------------------------------------------------------------------------- #
+device_llm_limiter = RateLimiter(
+    max_requests=settings.LLM_DAILY_LIMIT_PER_DEVICE,
+    window_seconds=settings.LLM_RATE_WINDOW_SECONDS,
+)
+global_llm_limiter = RateLimiter(
+    max_requests=settings.GLOBAL_LLM_DAILY_LIMIT,
+    window_seconds=settings.LLM_RATE_WINDOW_SECONDS,
+)
+_GLOBAL_KEY = "global"
 
-    async def _enforce(request: Request) -> None:
-        allowed, retry_after = limiter.hit(client_key(request))
-        if not allowed:
-            raise HTTPException(
-                status_code=429,
-                detail="Too many requests. Please slow down and try again shortly.",
-                headers={"Retry-After": str(int(retry_after) + 1)},
-            )
 
-    return _enforce
+async def enforce_llm_budget(request: Request) -> None:
+    """Gate every LLM endpoint on both the per-device and global daily budgets.
+
+    Both limiters are *checked* first and only *recorded* when both allow, so a
+    request rejected by one budget never consumes the other's allowance.
+    """
+    key = client_key(request)
+    dev_ok, dev_retry = device_llm_limiter.check(key)
+    glob_ok, glob_retry = global_llm_limiter.check(_GLOBAL_KEY)
+
+    if not dev_ok or not glob_ok:
+        retry_after = int(max(dev_retry if not dev_ok else 0, glob_retry if not glob_ok else 0))
+        raise HTTPException(
+            status_code=429,
+            detail="Daily request limit reached. Please try again later.",
+            headers={"Retry-After": str(retry_after + 1)},
+        )
+
+    device_llm_limiter.record(key)
+    global_llm_limiter.record(_GLOBAL_KEY)
