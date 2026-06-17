@@ -108,6 +108,32 @@ async def test_transcript_too_long_rejected(async_client: AsyncClient, llm_budge
     body["transcript"] = "a" * (settings.MAX_TRANSCRIPT_CHARS + 1)
     r = await async_client.post("/api/v1/parse", json=body, headers={"X-Device-UUID": DEV_A})
     assert r.status_code == 422
+    # Friendly single-string detail the app can show directly (not Pydantic's list).
+    detail = r.json()["detail"]
+    assert isinstance(detail, str)
+    assert "too long" in detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_device_limit_has_clear_message(async_client: AsyncClient, llm_budget) -> None:
+    device, _ = llm_budget
+    device.max_requests = 1
+    hdr = {"X-Device-UUID": DEV_A}
+    await async_client.post("/api/v1/parse", json=_parse_body(), headers=hdr)
+    r = await async_client.post("/api/v1/parse", json=_parse_body(), headers=hdr)
+    assert r.status_code == 429
+    assert "daily limit" in r.json()["detail"].lower()
+
+
+@pytest.mark.asyncio
+async def test_global_limit_has_distinct_message(async_client: AsyncClient, llm_budget) -> None:
+    device, glob = llm_budget
+    device.max_requests = 100
+    glob.max_requests = 1
+    await async_client.post("/api/v1/parse", json=_parse_body(DEV_A), headers={"X-Device-UUID": DEV_A})
+    r = await async_client.post("/api/v1/parse", json=_parse_body(DEV_B), headers={"X-Device-UUID": DEV_B})
+    assert r.status_code == 429
+    assert "busy" in r.json()["detail"].lower()
 
 
 @pytest.mark.asyncio

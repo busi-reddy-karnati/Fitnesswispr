@@ -111,12 +111,23 @@ async def enforce_llm_budget(request: Request) -> None:
     dev_ok, dev_retry = device_llm_limiter.check(key)
     glob_ok, glob_retry = global_llm_limiter.check(_GLOBAL_KEY)
 
-    if not dev_ok or not glob_ok:
-        retry_after = int(max(dev_retry if not dev_ok else 0, glob_retry if not glob_ok else 0))
+    # Distinct, user-facing reasons so the app can tell the customer what
+    # actually happened (their own daily cap vs. a temporary service-wide cap).
+    if not dev_ok:
         raise HTTPException(
             status_code=429,
-            detail="Daily request limit reached. Please try again later.",
-            headers={"Retry-After": str(retry_after + 1)},
+            detail=(
+                f"You've reached your daily limit of "
+                f"{settings.LLM_DAILY_LIMIT_PER_DEVICE} AI requests. "
+                f"Please try again tomorrow."
+            ),
+            headers={"Retry-After": str(int(dev_retry) + 1)},
+        )
+    if not glob_ok:
+        raise HTTPException(
+            status_code=429,
+            detail="SpotRep is busy right now. Please try again in a little while.",
+            headers={"Retry-After": str(int(glob_retry) + 1)},
         )
 
     device_llm_limiter.record(key)
