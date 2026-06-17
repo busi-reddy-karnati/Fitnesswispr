@@ -553,11 +553,10 @@ platform :ios do
     # auth flags into the export when a key is in context, so xcodebuild can
     # create/refresh the Distribution cert + app-store profile on the fly.
     # signingStyle: automatic lets it resolve the profile without a manual map.
-    export_auth = [
-      "-authenticationKeyPath", File.expand_path(ENV["ASC_KEY_PATH"]),
-      "-authenticationKeyID", ENV["ASC_KEY_ID"],
-      "-authenticationKeyIssuerID", ENV["ASC_ISSUER_ID"]
-    ].join(" ")
+    # Manual export signing with a profile created via the API key. The key's
+    # role can't do xcodebuild "cloud signing", so we pre-create the cert
+    # (fastlane cert) + app-store profile (fastlane sigh) and map it here.
+    profile_name = ENV["ASC_PROFILE_NAME"] || "com.fitnesswispr.app AppStore"
     build_app(
       project: "Fitnesswispr.xcodeproj",
       scheme: "Fitnesswispr",
@@ -568,10 +567,13 @@ platform :ios do
       clean: true,
       export_method: "app-store",
       xcargs: "-allowProvisioningUpdates",
-      export_xcargs: export_auth,
       export_options: {
-        signingStyle: "automatic",
-        teamID: ENV["ASC_TEAM_ID"]
+        method: "app-store",
+        signingStyle: "manual",
+        teamID: ENV["ASC_TEAM_ID"],
+        provisioningProfiles: {
+          APP_IDENTIFIER => profile_name
+        }
       }
     )
     upload_to_testflight(
