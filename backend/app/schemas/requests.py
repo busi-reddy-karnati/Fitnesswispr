@@ -69,6 +69,11 @@ class CreateSessionRequest(BaseModel):
     body_weight_lbs: Decimal | None = None
     workout_type: str | None = None
     cardio_notes: str | None = None
+    # Structured cardio (e.g. a run/sprint logged on its own). Kept separate
+    # from the muscle map / strength PRs — a cardio entry has no exercises.
+    cardio_activity: str | None = None
+    cardio_distance: Decimal | None = None
+    cardio_distance_unit: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
     exercises: list[ExerciseCreate] = []
@@ -81,6 +86,9 @@ class UpdateSessionRequest(BaseModel):
     body_weight_lbs: Decimal | None = None
     workout_type: str | None = None
     cardio_notes: str | None = None
+    cardio_activity: str | None = None
+    cardio_distance: Decimal | None = None
+    cardio_distance_unit: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
     exercises: list[ExerciseCreate] | None = None

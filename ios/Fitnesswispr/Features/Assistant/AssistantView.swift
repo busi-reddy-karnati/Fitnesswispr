@@ -329,10 +329,10 @@ private struct WorkoutDraftCard: View {
                 }
             }
 
-            if let cardio = parsed.cardioNotes, !cardio.isEmpty {
-                Label(cardio, systemImage: "figure.run")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            if let cardio = parsed.cardioSummaryLine {
+                Label(cardio, systemImage: CardioSummary.symbol)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.appAccent)
             }
 
             if !saved {

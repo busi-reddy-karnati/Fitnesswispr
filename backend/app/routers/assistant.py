@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -28,11 +28,23 @@ enforce_assistant_rate_limit = make_rate_limit_dependency(_assistant_limiter)
 
 HISTORY_DAYS = 180
 MAX_SESSIONS = 120
+# How many prior chat turns we keep as context for follow-up questions. Capped
+# to bound token cost; the client sends its most recent turns (oldest first).
+MAX_CONVERSATION_TURNS = 10
+MAX_TURN_CHARS = 1000
+
+
+class ChatTurn(BaseModel):
+    role: str  # "user" or "assistant"
+    content: str
 
 
 class AssistantChatRequest(BaseModel):
     device_uuid: str
     message: str
+    # Recent conversation turns (oldest first), excluding the current message,
+    # so follow-up questions keep context.
+    history: list[ChatTurn] = Field(default_factory=list)
 
 
 class AssistantChatResponse(BaseModel):
@@ -62,6 +74,31 @@ def _summarize(sessions: list[WorkoutSession]) -> str:
             if holds:
                 seg += f", hold {max(holds)}s"
             parts.append(seg)
+        # Cardio (runs/sprints/etc.) logged on the session — exercises are empty
+        # for a pure cardio entry, so surface its details explicitly.
+        cardio_bits: list[str] = []
+        if s.cardio_activity:
+            cardio_bits.append(str(s.cardio_activity))
+        if s.cardio_distance is not None:
+            unit = s.cardio_distance_unit or "mi"
+            cardio_bits.append(f"{float(s.cardio_distance):g} {unit}")
+        if s.duration_minutes:
+            cardio_bits.append(f"{s.duration_minutes} min")
+        if s.cardio_distance and s.duration_minutes:
+            # Pace as min/mile so the assistant can answer pace/progress asks.
+            miles = float(s.cardio_distance)
+            u = (s.cardio_distance_unit or "mi").lower()
+            if u in ("km", "kilometer", "kilometers"):
+                miles *= 0.621371
+            elif u in ("m", "meter", "meters"):
+                miles *= 0.000621371
+            if miles > 0:
+                pace = s.duration_minutes / miles
+                cardio_bits.append(f"{int(pace)}:{int(round((pace % 1) * 60)):02d}/mi")
+        if s.cardio_notes:
+            cardio_bits.append(str(s.cardio_notes))
+        if cardio_bits:
+            parts.append(" ".join(cardio_bits))
         wtype = f"[{s.workout_type}] " if s.workout_type else ""
         lines.append(f"{s.workout_date} {wtype}" + "; ".join(parts))
     return "\n".join(lines)
@@ -102,7 +139,15 @@ async def assistant_chat(
     sessions = list(result.scalars().all())
 
     history = _summarize(sessions)
+    conversation = [
+        {"role": t.role, "content": t.content[:MAX_TURN_CHARS]}
+        for t in body.history[-MAX_CONVERSATION_TURNS:]
+        if t.content.strip()
+    ]
     reply = await gemini_service.answer_question(
-        question=body.message, history=history, today=today.isoformat()
+        question=body.message,
+        history=history,
+        today=today.isoformat(),
+        conversation=conversation,
     )
     return AssistantChatResponse(reply=reply)
