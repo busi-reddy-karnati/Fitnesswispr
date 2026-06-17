@@ -95,6 +95,30 @@ Create the app record on App Store Connect
 
 Archive + export the IPA only (no upload)
 
+### ios public_beta
+
+```sh
+[bundle exec] fastlane ios public_beta
+```
+
+Set up the external (public) TestFlight group and submit for Beta App Review
+
+### ios invite_tester
+
+```sh
+[bundle exec] fastlane ios invite_tester
+```
+
+Invite an external tester by email to an external group (default 'Public Beta')
+
+### ios public_beta_status
+
+```sh
+[bundle exec] fastlane ios public_beta_status
+```
+
+Print the public TestFlight link and review status
+
 ### ios beta
 
 ```sh
