@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -13,18 +13,11 @@ from sqlalchemy.orm import selectinload
 from app.dependencies import get_db
 from app.models.exercise import Exercise
 from app.models.session import WorkoutSession
-from app.ratelimit import RateLimiter, make_rate_limit_dependency
+from app.ratelimit import enforce_llm_budget
 from app.config import settings
 from app.services import gemini_service
 
 router = APIRouter()
-
-# Reuse the same budget as /parse since both are LLM-backed.
-_assistant_limiter = RateLimiter(
-    max_requests=settings.PARSE_RATE_LIMIT,
-    window_seconds=settings.PARSE_RATE_WINDOW_SECONDS,
-)
-enforce_assistant_rate_limit = make_rate_limit_dependency(_assistant_limiter)
 
 HISTORY_DAYS = 180
 MAX_SESSIONS = 120
@@ -32,7 +25,7 @@ MAX_SESSIONS = 120
 
 class AssistantChatRequest(BaseModel):
     device_uuid: str
-    message: str
+    message: str = Field(max_length=settings.MAX_ASSISTANT_CHARS)
 
 
 class AssistantChatResponse(BaseModel):
@@ -70,7 +63,7 @@ def _summarize(sessions: list[WorkoutSession]) -> str:
 @router.post(
     "/assistant/chat",
     response_model=AssistantChatResponse,
-    dependencies=[Depends(enforce_assistant_rate_limit)],
+    dependencies=[Depends(enforce_llm_budget)],
 )
 async def assistant_chat(
     body: AssistantChatRequest,

@@ -1,26 +1,17 @@
 from fastapi import APIRouter, Depends
 
-from app.config import settings
-from app.ratelimit import RateLimiter, make_rate_limit_dependency
+from app.ratelimit import enforce_llm_budget
 from app.schemas.requests import ParseRequest
 from app.schemas.responses import ParseResponse
 from app.services import gemini_service
 
 router = APIRouter()
 
-# Shared limiter for the LLM-backed parse endpoint. Exposed at module level so
-# it can be tuned/reset in tests.
-parse_limiter = RateLimiter(
-    max_requests=settings.PARSE_RATE_LIMIT,
-    window_seconds=settings.PARSE_RATE_WINDOW_SECONDS,
-)
-enforce_parse_rate_limit = make_rate_limit_dependency(parse_limiter)
-
 
 @router.post(
     "/parse",
     response_model=ParseResponse,
-    dependencies=[Depends(enforce_parse_rate_limit)],
+    dependencies=[Depends(enforce_llm_budget)],
 )
 async def parse_workout(request: ParseRequest) -> ParseResponse:
     """

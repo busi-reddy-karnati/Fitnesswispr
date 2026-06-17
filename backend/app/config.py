@@ -8,10 +8,25 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost/fitnesswispr"
     CORS_ORIGINS: list[str] = ["*"]
 
-    # Rate limit for the LLM-backed /parse endpoint (per device UUID, or IP
-    # when the X-Device-UUID header is absent). 100 requests per rolling 24h.
-    PARSE_RATE_LIMIT: int = 100
-    PARSE_RATE_WINDOW_SECONDS: int = 86400  # 24 hours
+    # --- LLM abuse / cost controls -------------------------------------- #
+    # One budget shared across all LLM endpoints (/parse, /assistant/chat,
+    # /import/preview), keyed by device UUID (or client IP as fallback), plus a
+    # global ceiling across all callers as an absolute wallet backstop.
+    LLM_DAILY_LIMIT_PER_DEVICE: int = 100
+    GLOBAL_LLM_DAILY_LIMIT: int = 5000
+    LLM_RATE_WINDOW_SECONDS: int = 86400  # rolling 24h
+
+    # Per-request input caps (reject before spending Gemini tokens).
+    MAX_TRANSCRIPT_CHARS: int = 2000
+    MAX_ASSISTANT_CHARS: int = 1000
+    MAX_IMPORT_BYTES: int = 8 * 1024 * 1024  # 8 MB decoded upload
+    MAX_IMPORT_SHEETS: int = 12  # cap concurrent Gemini calls per import
+
+    # Per-call Gemini output caps. Keep generous: with JSON responses a
+    # truncated output is invalid JSON, so these must fit real outputs.
+    PARSE_MAX_OUTPUT_TOKENS: int = 2048
+    ASSISTANT_MAX_OUTPUT_TOKENS: int = 600
+    IMPORT_MAX_OUTPUT_TOKENS: int = 8192
 
     # Sign in with Apple. APPLE_BUNDLE_ID is the audience ("aud") of the
     # identity token issued to the native iOS app.

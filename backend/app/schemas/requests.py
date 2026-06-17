@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.config import settings
+
 
 class ExerciseSetCreate(BaseModel):
     set_number: int
@@ -23,7 +25,7 @@ class ExerciseCreate(BaseModel):
 
 
 class ParseRequest(BaseModel):
-    transcript: str
+    transcript: str = Field(max_length=settings.MAX_TRANSCRIPT_CHARS)
     device_uuid: str
     unit_preference: str = "lbs"
     context: dict = Field(default_factory=dict)
