@@ -66,7 +66,7 @@ struct QuickLogService {
 
         var bodyWeight: Double?
         if let ctx = try? await APIClient.shared.get(
-            APIEndpoints.deviceContext(DeviceUUID.shared.id)
+            APIEndpoints.deviceContext(Identity.current)
         ) as DeviceContextResponse {
             bodyWeight = ctx.lastBodyWeightLbs
         }
@@ -74,7 +74,7 @@ struct QuickLogService {
         let unit = UserDefaults.standard.string(forKey: "unit_preference") ?? "lbs"
         let parseBody = ParseRequest(
             transcript: trimmed,
-            deviceUuid: DeviceUUID.shared.id,
+            deviceUuid: Identity.current,
             unitPreference: unit,
             context: ParseContext(bodyWeightLbs: bodyWeight)
         )

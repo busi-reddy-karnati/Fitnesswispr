@@ -2,7 +2,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
-from app.routers import parse, sessions, calendar, export, devices, assistant, imports
+from app.routers import (
+    parse, sessions, calendar, export, devices, assistant, imports, auth,
+    profiles, health,
+)
 
 app = FastAPI(
     title="Fitnesswispr API",
@@ -25,6 +28,9 @@ app.include_router(export.router, prefix="/api/v1")
 app.include_router(devices.router, prefix="/api/v1")
 app.include_router(assistant.router, prefix="/api/v1")
 app.include_router(imports.router, prefix="/api/v1")
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(profiles.router, prefix="/api/v1")
+app.include_router(health.router, prefix="/api/v1")
 
 
 @app.get("/api/v1/health")

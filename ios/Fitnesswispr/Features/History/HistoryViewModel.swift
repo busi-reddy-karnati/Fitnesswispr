@@ -22,7 +22,7 @@ final class HistoryViewModel: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        let url = APIEndpoints.sessions(deviceUUID: DeviceUUID.shared.id, limit: limit, offset: offset)
+        let url = APIEndpoints.sessions(deviceUUID: Identity.current, limit: limit, offset: offset)
         do {
             let new: [WorkoutSession] = try await APIClient.shared.get(url)
             sessions += new

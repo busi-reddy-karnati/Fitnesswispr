@@ -70,7 +70,7 @@ struct RecordView: View {
 
     private var loggingForBanner: some View {
         HStack(spacing: 8) {
-            AvatarView(imageData: nil, initials: profile.active.initials, size: 22)
+            RemoteAvatarView(uuid: profile.active.id, initials: profile.active.initials, size: 22)
             Text("Logging for \(profile.active.name)")
                 .font(.caption.weight(.medium))
             Spacer()

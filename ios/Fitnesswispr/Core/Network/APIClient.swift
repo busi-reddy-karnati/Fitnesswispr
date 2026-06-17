@@ -8,7 +8,10 @@ final class APIClient {
 
     private func baseRequest(url: URL, method: String = "GET", timeout: TimeInterval = 30) -> URLRequest {
         var req = URLRequest(url: url)
-        req.setValue(DeviceUUID.shared.id, forHTTPHeaderField: "X-Device-UUID")
+        req.setValue(Identity.current, forHTTPHeaderField: "X-Device-UUID")
+        if let token = AccountStore.shared.token {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpMethod = method
         req.timeoutInterval = timeout
@@ -36,6 +39,22 @@ final class APIClient {
         let (data, response) = try await session.data(for: req)
         try validate(response: response, data: data)
         return try decode(Response.self, from: data)
+    }
+
+    /// POST a JSON body to an endpoint that returns no content (e.g. 204).
+    func postNoContent<Body: Encodable>(_ url: URL, body: Body) async throws {
+        var req = baseRequest(url: url, method: "POST")
+        req.httpBody = try snakeCaseEncoder.encode(body)
+        let (data, response) = try await session.data(for: req)
+        try validate(response: response, data: data)
+    }
+
+    /// Upload raw bytes (e.g. an image) with a PUT.
+    func putData(_ url: URL, data: Data, contentType: String) async throws {
+        var req = baseRequest(url: url, method: "PUT")
+        req.setValue(contentType, forHTTPHeaderField: "Content-Type")
+        let (respData, response) = try await session.upload(for: req, from: data)
+        try validate(response: response, data: respData)
     }
 
     private var snakeCaseEncoder: JSONEncoder {

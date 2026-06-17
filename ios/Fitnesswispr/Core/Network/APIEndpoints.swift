@@ -24,6 +24,37 @@ enum APIEndpoints {
     static var assistantChat: URL { URL(string: "\(baseURL)/api/v1/assistant/chat")! }
     static var importPreview: URL { URL(string: "\(baseURL)/api/v1/import/preview")! }
     static var importCommit: URL { URL(string: "\(baseURL)/api/v1/import/commit")! }
+    static var authApple: URL { URL(string: "\(baseURL)/api/v1/auth/apple")! }
+    static var healthSync: URL { URL(string: "\(baseURL)/api/v1/health/sync")! }
+
+    static func profile(_ deviceUUID: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(deviceUUID)")!
+    }
+
+    static func profileAvatar(_ deviceUUID: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(deviceUUID)/avatar")!
+    }
+
+    static func grants(owner: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(owner)/grants")!
+    }
+
+    static func grant(owner: String, grantee: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(owner)/grants/\(grantee)")!
+    }
+
+    static func spotting(_ deviceUUID: String) -> URL {
+        URL(string: "\(baseURL)/api/v1/profile/\(deviceUUID)/spotting")!
+    }
+
+    static func health(deviceUUID: String, startDate: String? = nil, endDate: String? = nil) -> URL {
+        var components = URLComponents(string: "\(baseURL)/api/v1/health/days")!
+        var items = [URLQueryItem(name: "device_uuid", value: deviceUUID)]
+        if let s = startDate { items.append(URLQueryItem(name: "start_date", value: s)) }
+        if let e = endDate { items.append(URLQueryItem(name: "end_date", value: e)) }
+        components.queryItems = items
+        return components.url!
+    }
 
     static func session(_ id: String) -> URL {
         URL(string: "\(baseURL)/api/v1/sessions/\(id)")!
