@@ -243,32 +243,41 @@ final class ProgressStore: ObservableObject {
     }
 
     func summary(for region: MuscleRegion) -> MuscleSummary {
-        var byName: [String: [(date: Date, ex: Exercise)]] = [:]
+        // Group by canonical name so spelling/plural/synonym variants of the
+        // same movement (e.g. "Leg Extension" / "Leg Extensions") merge into one.
+        var byKey: [String: [(date: Date, ex: Exercise)]] = [:]
         var lastDate: Date?
         for s in sessions {
             guard let d = Date.from(apiString: s.workoutDate) else { continue }
             for ex in s.exercises {
                 guard MuscleRegion.classify(muscleGroup: ex.muscleGroup, exerciseName: ex.name) == region else { continue }
-                byName[ex.name, default: []].append((d, ex))
+                byKey[ExerciseName.canonicalKey(ex.name), default: []].append((d, ex))
                 if lastDate == nil || d > lastDate! { lastDate = d }
             }
         }
-        let summaries = byName
-            .map { buildExerciseSummary(name: $0.key, occurrences: $0.value) }
+        let summaries = byKey.values
+            .map { buildExerciseSummary(name: displayName(for: $0), occurrences: $0) }
             .sorted { ($0.lastDate ?? .distantPast) > ($1.lastDate ?? .distantPast) }
         return MuscleSummary(region: region, lastDate: lastDate, exercises: summaries)
     }
 
     func summary(forExercise name: String) -> ExerciseSummary? {
+        let key = ExerciseName.canonicalKey(name)
         var occ: [(date: Date, ex: Exercise)] = []
         for s in sessions {
             guard let d = Date.from(apiString: s.workoutDate) else { continue }
-            for ex in s.exercises where ex.name.caseInsensitiveCompare(name) == .orderedSame {
+            for ex in s.exercises where ExerciseName.canonicalKey(ex.name) == key {
                 occ.append((d, ex))
             }
         }
         guard !occ.isEmpty else { return nil }
-        return buildExerciseSummary(name: name, occurrences: occ)
+        return buildExerciseSummary(name: displayName(for: occ), occurrences: occ)
+    }
+
+    /// Pick the spelling the user most recently used for a merged exercise.
+    private func displayName(for occurrences: [(date: Date, ex: Exercise)]) -> String {
+        let name = occurrences.max { $0.date < $1.date }?.ex.name ?? ""
+        return name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func buildExerciseSummary(name: String, occurrences: [(date: Date, ex: Exercise)]) -> ExerciseSummary {
