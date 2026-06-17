@@ -25,7 +25,12 @@ Parsing rules:
    - "bench press 225 squat 315" → two exercises.
 2a. Exercise names are often garbled by speech-to-text. Map any unclear, misspelled, or phonetically-off name to the CLOSEST standard gym exercise and output the clean canonical name (e.g. "lakh press" → "Leg Press", "incline dumbell" → "Incline Dumbbell Press", "tricep rope" → "Tricep Pushdown", "lat pull" → "Lat Pulldown"). Never output gibberish as the exercise name; always pick the nearest real exercise.
 3. "bodyweight is 180" or "I weigh 180" → set body_weight_lbs on the session object, NOT on the exercise.
-4. "20 min treadmill" or "30 minutes cardio" → set cardio_notes string (e.g. "20 min treadmill").
+4. Cardio (running, sprints, treadmill, cycling, rowing, HIIT, walking, swimming, etc.): set workout_type "Cardio" for a cardio-only session and fill the session-level cardio fields:
+   - cardio_activity: the activity name, capitalized (e.g. "Running", "Sprints", "Cycling", "Rowing", "HIIT", "Treadmill", "Walking", "Swimming").
+   - duration_minutes: total minutes if stated ("ran for 25 minutes" → 25, "30 minutes cardio" → 30).
+   - cardio_distance + cardio_distance_unit: distance if stated ("3 miles" → 3.0 with unit "mi"; "5k" → 5.0 with unit "km"; "800 meters" → 800 with unit "m").
+   - cardio_notes: any leftover detail (e.g. "10x100m", "incline 5", "treadmill").
+   A pure cardio entry has NO exercises — leave "exercises" empty. If cardio is mentioned alongside lifts, keep the lifts in "exercises" AND fill the cardio fields.
 5. When unit is not stated, infer from unit_preference: {unit_preference}.
 6. Bodyweight exercises (push-ups, pull-ups, dips, etc.) → weight=null.
 7. Duration exercises (planks, holds) → duration_seconds set, reps=null, weight=null.
@@ -45,6 +50,9 @@ Return JSON in exactly this format (no markdown, no fences):
   "workout_type": "Push",
   "body_weight_lbs": null,
   "cardio_notes": null,
+  "cardio_activity": null,
+  "cardio_distance": null,
+  "cardio_distance_unit": null,
   "session_notes": null,
   "duration_minutes": null,
   "exercises": [
@@ -241,17 +249,38 @@ async def extract_photo(image_bytes: bytes, mime: str) -> dict:
         raise HTTPException(status_code=502, detail="Could not read the photo") from exc
 
 
-async def answer_question(question: str, history: str, today: str) -> str:
-    """Answer a free-form question grounded in the user's workout history."""
+async def answer_question(
+    question: str,
+    history: str,
+    today: str,
+    conversation: list[dict] | None = None,
+) -> str:
+    """Answer a free-form question grounded in the user's workout history.
+
+    `conversation` is the recent chat transcript (prior turns, oldest first) so
+    follow-up questions ("what about last week?", "and on bench?") keep context.
+    Each turn is {"role": "user"|"assistant", "content": str}; the current
+    `question` is appended as the final user turn.
+    """
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
     system_prompt = ASSISTANT_SYSTEM_PROMPT.format(
         today=today,
         history=history or "(no workouts logged yet)",
     )
+
+    contents: list[dict] = []
+    for turn in conversation or []:
+        text = (turn.get("content") or "").strip()
+        if not text:
+            continue
+        role = "user" if turn.get("role") == "user" else "model"
+        contents.append({"role": role, "parts": [{"text": text}]})
+    contents.append({"role": "user", "parts": [{"text": question}]})
+
     try:
         response = client.models.generate_content(
             model="gemini-2.5-flash",
-            contents=question,
+            contents=contents,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 temperature=0.3,

@@ -53,9 +53,17 @@ struct Clarification {
     let draft: ParsedSession?
 }
 
+/// One prior turn of the chat, sent so the assistant can answer follow-ups.
+struct ChatTurn: Encodable {
+    let role: String      // "user" or "assistant"
+    let content: String
+}
+
 struct AssistantChatRequest: Encodable {
     let deviceUuid: String
     let message: String
+    /// Recent conversation turns (oldest first), excluding the current message.
+    var history: [ChatTurn] = []
 }
 
 struct AssistantChatResponse: Decodable {

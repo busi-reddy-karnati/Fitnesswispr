@@ -33,6 +33,9 @@ class WorkoutSession(Base):
     body_weight_lbs: Mapped[float | None] = mapped_column(NUMERIC(5, 1), nullable=True)
     workout_type: Mapped[str | None] = mapped_column(VARCHAR(30), nullable=True)
     cardio_notes: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    cardio_activity: Mapped[str | None] = mapped_column(VARCHAR(40), nullable=True)
+    cardio_distance: Mapped[float | None] = mapped_column(NUMERIC(7, 2), nullable=True)
+    cardio_distance_unit: Mapped[str | None] = mapped_column(VARCHAR(8), nullable=True)
     session_notes: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     duration_minutes: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
 

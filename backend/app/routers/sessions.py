@@ -62,6 +62,9 @@ async def create_session(
         body_weight_lbs=body.body_weight_lbs,
         workout_type=body.workout_type,
         cardio_notes=body.cardio_notes,
+        cardio_activity=body.cardio_activity,
+        cardio_distance=body.cardio_distance,
+        cardio_distance_unit=body.cardio_distance_unit,
         session_notes=body.session_notes,
         duration_minutes=body.duration_minutes,
     )

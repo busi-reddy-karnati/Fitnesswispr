@@ -6,6 +6,7 @@ struct SessionDetailView: View {
     @State private var session: WorkoutSession
     @State private var isEditing = false
     @State private var pendingDelete: Exercise?
+    @State private var showCardioDeleteConfirm = false
     @State private var error: String?
     @State private var editedDate = Date()
 
@@ -54,9 +55,34 @@ struct SessionDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
-                if let cardio = session.cardioNotes {
-                    Label(cardio, systemImage: "figure.run")
-                        .font(.subheadline)
+                if let cardio = session.cardioSummaryLine {
+                    Label(cardio, systemImage: CardioSummary.symbol)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.appAccent)
+                }
+
+                if session.isCardioOnly {
+                    NavigationLink {
+                        CardioProgressView(activity: session.cardioActivity ?? "Cardio")
+                    } label: {
+                        Label("View \((session.cardioActivity ?? "cardio").lowercased()) progress", systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    if canEdit {
+                        Button(role: .destructive) { showCardioDeleteConfirm = true } label: {
+                            Label("Delete this entry", systemImage: "trash")
+                                .font(.subheadline.weight(.medium))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(Color.cardBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
                 }
 
                 ForEach(session.exercises) { exercise in
@@ -110,6 +136,26 @@ struct SessionDetailView: View {
                 delete(exercise)
             }
             Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog(
+            "Delete this \((session.cardioActivity ?? "cardio").lowercased()) entry?",
+            isPresented: $showCardioDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deleteWholeSession() }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Delete the entire session (used for cardio entries, which have no
+    /// individual exercises to remove). Optimistic: dismiss immediately.
+    private func deleteWholeSession() {
+        guard let sessionId = session.sessionId else { return }
+        onDeleted?(sessionId)
+        onChanged?()
+        dismiss()
+        Task {
+            try? await APIClient.shared.delete(APIEndpoints.session(sessionId))
         }
     }
 
