@@ -48,7 +48,9 @@ class ImportExercise(BaseModel):
     name: str
     muscle_group: str | None = None
     notes: str | None = None
-    sets: list[ImportSet] = []
+    sets: list[ImportSet] = Field(
+        default_factory=list, max_length=settings.MAX_SETS_PER_EXERCISE
+    )
 
 
 class ImportWorkout(BaseModel):
@@ -58,7 +60,9 @@ class ImportWorkout(BaseModel):
     day_label: str | None = None
     workout_date: str | None = None
     workout_type: str | None = None
-    exercises: list[ImportExercise] = []
+    exercises: list[ImportExercise] = Field(
+        default_factory=list, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
 
 
 class PreviewResponse(BaseModel):
@@ -77,11 +81,15 @@ class CommitItem(BaseModel):
     workout_date: date
     workout_type: str | None = None
     source: str = "import"
-    exercises: list[ImportExercise] = []
+    exercises: list[ImportExercise] = Field(
+        default_factory=list, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
 
 
 class CommitRequest(BaseModel):
-    items: list[CommitItem] = []
+    items: list[CommitItem] = Field(
+        default_factory=list, max_length=settings.MAX_COMMIT_ITEMS
+    )
 
 
 class CommitResponse(BaseModel):
