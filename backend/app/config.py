@@ -28,5 +28,12 @@ class Settings(BaseSettings):
     ASSISTANT_MAX_OUTPUT_TOKENS: int = 600
     IMPORT_MAX_OUTPUT_TOKENS: int = 8192
 
+    # --- Payload size limits (DB/memory abuse on non-LLM endpoints) ------ #
+    # Reject absurdly large writes before they bloat the DB or memory.
+    MAX_REQUEST_BODY_BYTES: int = 12 * 1024 * 1024  # > the largest legit import body
+    MAX_EXERCISES_PER_SESSION: int = 50
+    MAX_SETS_PER_EXERCISE: int = 50
+    MAX_COMMIT_ITEMS: int = 500  # workouts per bulk import commit
+
 
 settings = Settings()
