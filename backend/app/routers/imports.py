@@ -158,6 +158,7 @@ async def _preview_spreadsheet(raw: bytes) -> PreviewResponse:
 
     # Cap fan-out: one request must not spawn an unbounded number of Gemini
     # calls. Process at most MAX_IMPORT_SHEETS training tabs.
+    truncated = len(sheets) > settings.MAX_IMPORT_SHEETS
     sheets = sheets[: settings.MAX_IMPORT_SHEETS]
 
     results = await asyncio.gather(
@@ -196,6 +197,10 @@ async def _preview_spreadsheet(raw: bytes) -> PreviewResponse:
     summary = (
         f"{people_note}{week_note}, {len(workouts)} workouts, {total_sets} sets"
     )
+    if truncated:
+        summary += (
+            f" (only the first {settings.MAX_IMPORT_SHEETS} tabs were imported)"
+        )
     return PreviewResponse(
         source_kind="spreadsheet",
         detected_unit=detected_unit,
