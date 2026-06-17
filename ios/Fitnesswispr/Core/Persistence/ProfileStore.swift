@@ -145,24 +145,27 @@ final class ProfileStore: ObservableObject {
         let targets = linked
         guard !targets.isEmpty else { return }
         Task {
-            var updates: [(id: String, name: String)] = []
+            var updates: [(id: String, name: String?, hasAvatar: Bool)] = []
             for p in targets {
-                if let info: ProfileInfo = try? await APIClient.shared.get(APIEndpoints.profile(p.id)),
-                   let name = info.name, !name.isEmpty {
-                    updates.append((p.id, name))
+                if let info: ProfileInfo = try? await APIClient.shared.get(APIEndpoints.profile(p.id)) {
+                    updates.append((p.id, info.name, info.hasAvatar))
                 }
             }
             let resolved = updates
-            await MainActor.run { ProfileStore.shared.applyLinkedNames(resolved) }
+            await MainActor.run { ProfileStore.shared.applyLinkedProfileInfo(resolved) }
         }
     }
 
     @MainActor
-    private func applyLinkedNames(_ updates: [(id: String, name: String)]) {
+    private func applyLinkedProfileInfo(_ updates: [(id: String, name: String?, hasAvatar: Bool)]) {
         for u in updates {
-            if let idx = linked.firstIndex(where: { $0.id == u.id }), linked[idx].name != u.name {
-                linked[idx].name = u.name
+            if let name = u.name, !name.isEmpty,
+               let idx = linked.firstIndex(where: { $0.id == u.id }), linked[idx].name != name {
+                linked[idx].name = name
             }
+            // Self-heal a stale avatar cache-miss: if the server now has a photo
+            // for this person, re-fetch it even if we earlier cached a 404.
+            AvatarCache.shared.refreshIfNeeded(u.id, hasAvatar: u.hasAvatar)
         }
     }
 

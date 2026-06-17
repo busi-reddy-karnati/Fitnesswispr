@@ -33,6 +33,16 @@ final class AvatarCache: ObservableObject {
         images[uuid] = nil
         missing.remove(uuid)
     }
+
+    /// Re-attempt loading an avatar the server says exists. Clears any stale
+    /// "missing" marker (e.g. from a 404 before the photo was uploaded, or
+    /// before the avatar route was deployed) without flickering a photo we
+    /// already have cached.
+    func refreshIfNeeded(_ uuid: String, hasAvatar: Bool) {
+        guard hasAvatar, images[uuid] == nil else { return }
+        missing.remove(uuid)
+        load(uuid)
+    }
 }
 
 /// An avatar for a profile identified by UUID. Shows the local photo for "me",
