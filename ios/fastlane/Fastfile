@@ -295,4 +295,46 @@ platform :ios do
       notify_external_testers: false
     )
   end
+
+  desc "CI: build + upload to TestFlight with an auto-incremented build number"
+  lane :ci_release do
+    key = asc_key
+
+    # Pick the next build number from what's already on TestFlight so CI never
+    # collides with manual uploads. Falls back to a timestamp if the lookup
+    # fails (e.g. first ever build).
+    next_build = begin
+      latest_testflight_build_number(
+        api_key: key,
+        app_identifier: APP_IDENTIFIER,
+        version: get_version_number(xcodeproj: "Fitnesswispr.xcodeproj", target: "Fitnesswispr"),
+      ).to_i + 1
+    rescue StandardError => e
+      UI.important("Could not read latest TestFlight build (#{e.message}); using timestamp.")
+      Time.now.to_i
+    end
+    UI.message("Building with build number #{next_build}")
+
+    build_app(
+      project: "Fitnesswispr.xcodeproj",
+      scheme: "Fitnesswispr",
+      configuration: "Release",
+      output_directory: "/tmp/fw_build",
+      output_name: "Fitnesswispr.ipa",
+      derived_data_path: "/tmp/fw_dd_release",
+      clean: true,
+      export_method: "app-store",
+      # Override the build number at build time so we don't have to commit it.
+      xcargs: "-allowProvisioningUpdates CURRENT_PROJECT_VERSION=#{next_build}"
+    )
+
+    upload_to_testflight(
+      api_key: key,
+      app_identifier: APP_IDENTIFIER,
+      # Don't burn CI minutes waiting for Apple's processing.
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      notify_external_testers: false
+    )
+  end
 end
