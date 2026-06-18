@@ -35,13 +35,24 @@ struct WorkoutSession: Codable, Identifiable {
     var workoutType: String?
     var bodyWeightLbs: Double?
     var cardioNotes: String?
+    var cardioActivity: String?
+    var cardioDistance: Double?
+    var cardioDistanceUnit: String?
     var sessionNotes: String?
     var durationMinutes: Int?
     var exercises: [Exercise]
 
     enum CodingKeys: String, CodingKey {
         case sessionId, deviceUuid, workoutDate, createdAt, source, rawTranscript
-        case workoutType, bodyWeightLbs, cardioNotes, sessionNotes, durationMinutes, exercises
+        case workoutType, bodyWeightLbs, cardioNotes
+        case cardioActivity, cardioDistance, cardioDistanceUnit
+        case sessionNotes, durationMinutes, exercises
+    }
+
+    /// A standalone cardio entry (a run/sprint/etc. logged on its own, with no
+    /// strength exercises). These never appear in the muscle map or strength PRs.
+    var isCardioOnly: Bool {
+        exercises.isEmpty && (cardioActivity?.isEmpty == false || cardioNotes?.isEmpty == false)
     }
 }
 
@@ -49,7 +60,20 @@ struct ParsedSession: Codable {
     var workoutType: String?
     var bodyWeightLbs: Double?
     var cardioNotes: String?
+    var cardioActivity: String?
+    var cardioDistance: Double?
+    var cardioDistanceUnit: String?
+    var durationMinutes: Int?
     var exercises: [Exercise]
+
+    /// True when the parse produced a cardio session with no strength exercises.
+    var isCardioOnly: Bool {
+        exercises.isEmpty &&
+            (cardioActivity?.isEmpty == false
+                || cardioNotes?.isEmpty == false
+                || cardioDistance != nil
+                || durationMinutes != nil)
+    }
 }
 
 /// Partial update for a session. Only the fields that are set are sent, so the
@@ -79,6 +103,10 @@ struct CreateSessionRequest: Encodable {
     let workoutType: String?
     let bodyWeightLbs: Double?
     let cardioNotes: String?
+    var cardioActivity: String? = nil
+    var cardioDistance: Double? = nil
+    var cardioDistanceUnit: String? = nil
+    var durationMinutes: Int? = nil
     let sessionNotes: String?
     let exercises: [Exercise]
 
@@ -91,6 +119,10 @@ struct CreateSessionRequest: Encodable {
         try container.encodeIfPresent(workoutType, forKey: .workoutType)
         try container.encodeIfPresent(bodyWeightLbs, forKey: .bodyWeightLbs)
         try container.encodeIfPresent(cardioNotes, forKey: .cardioNotes)
+        try container.encodeIfPresent(cardioActivity, forKey: .cardioActivity)
+        try container.encodeIfPresent(cardioDistance, forKey: .cardioDistance)
+        try container.encodeIfPresent(cardioDistanceUnit, forKey: .cardioDistanceUnit)
+        try container.encodeIfPresent(durationMinutes, forKey: .durationMinutes)
         try container.encodeIfPresent(sessionNotes, forKey: .sessionNotes)
         try container.encode(exercises, forKey: .exercises)
     }
@@ -103,6 +135,10 @@ struct CreateSessionRequest: Encodable {
         case workoutType = "workout_type"
         case bodyWeightLbs = "body_weight_lbs"
         case cardioNotes = "cardio_notes"
+        case cardioActivity = "cardio_activity"
+        case cardioDistance = "cardio_distance"
+        case cardioDistanceUnit = "cardio_distance_unit"
+        case durationMinutes = "duration_minutes"
         case sessionNotes = "session_notes"
         case exercises
     }

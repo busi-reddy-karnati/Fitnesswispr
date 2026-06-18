@@ -12,8 +12,34 @@ final class QuickActionCoordinator: ObservableObject {
     @Published var autoStartRecording = false
     /// When true, the assistant opens its attach menu (import a spreadsheet/photo).
     @Published var pendingAttach = false
+    /// Result of opening a `spotrep://join/<code>` invite link, shown as an alert.
+    @Published var joinOutcome: JoinOutcome?
+
+    struct JoinOutcome: Identifiable, Equatable {
+        let id = UUID()
+        let title: String
+        let message: String
+    }
 
     private init() {}
+
+    /// Redeem an invite that opened the app via a deep link, and surface a
+    /// confirmation (or error) to the user.
+    func handleInvite(_ urlOrCode: String) {
+        do {
+            let p = try ProfileStore.shared.redeem(urlOrCode)
+            ProfileStore.shared.setActive(p.id)
+            joinOutcome = JoinOutcome(
+                title: "Spotter added",
+                message: "You're now spotting \(p.name). Their training shows up on your Home screen."
+            )
+        } catch {
+            joinOutcome = JoinOutcome(
+                title: "Couldn't add spotter",
+                message: error.localizedDescription
+            )
+        }
+    }
 
     /// Opens the assistant and immediately starts the microphone (Action Button,
     /// long-press quick action, "Hey Siri, log a workout").

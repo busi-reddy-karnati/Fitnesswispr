@@ -40,6 +40,9 @@ class WorkoutSessionSchema(BaseModel):
     body_weight_lbs: float | None = None
     workout_type: str | None = None
     cardio_notes: str | None = None
+    cardio_activity: str | None = None
+    cardio_distance: float | None = None
+    cardio_distance_unit: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
     exercises: list[ExerciseSchema] = []

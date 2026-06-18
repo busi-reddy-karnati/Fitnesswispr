@@ -59,7 +59,12 @@ struct HomeView: View {
                 )
                 .presentationDetents([.medium, .large])
             }
-            .task { await store.loadIfNeeded() }
+            .task {
+                profile.pushProfileIfNeeded()
+                profile.refreshLinkedProfiles()
+                profile.reconcileSpotting()
+                await store.loadIfNeeded()
+            }
             .refreshable { await store.load() }
             .onChange(of: profile.activeID) { _, _ in
                 Task { await store.load() }
@@ -67,6 +72,15 @@ struct HomeView: View {
             .onChange(of: coordinator.showRecorder) { _, isShowing in
                 // Refresh once the recorder closes so a just-logged workout appears.
                 if !isShowing { Task { await store.load() } }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .workoutLogged)) { note in
+                // Instant update from chat/Siri: apply the saved session locally
+                // when we have it, otherwise refetch.
+                if let saved = note.object as? WorkoutSession {
+                    store.applyLocally(saved)
+                } else {
+                    Task { await store.load() }
+                }
             }
         }
     }
@@ -81,8 +95,8 @@ struct HomeView: View {
                         profile.setActive(p.id)
                     } label: {
                         VStack(spacing: 5) {
-                            AvatarView(
-                                imageData: p.id == profile.meID ? profile.avatarData : nil,
+                            RemoteAvatarView(
+                                uuid: p.id,
                                 initials: p.initials,
                                 size: 54,
                                 ringColor: p.id == profile.activeID ? .appAccent : nil

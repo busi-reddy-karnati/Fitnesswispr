@@ -207,7 +207,10 @@ final class AssistantViewModel: ObservableObject {
         do {
             let parsed: ParsedSession = try await APIClient.shared.post(APIEndpoints.parse, body: req)
             if parsed.exercises.isEmpty {
-                if allowClarify, looksLikeWorkout(text) {
+                if parsed.isCardioOnly {
+                    // A standalone cardio entry (e.g. "ran 3 miles") — confirm it.
+                    present(parsed, in: id)
+                } else if allowClarify, looksLikeWorkout(text) {
                     askExerciseClarification(replacing: id, pendingText: text)
                 } else if allowQuestionFallback {
                     await answer(text, replacing: id)
@@ -454,28 +457,39 @@ final class AssistantViewModel: ObservableObject {
     }
 
     func saveDraft(_ parsed: ParsedSession, date: Date, draftID: UUID) {
-        isBusy = true
+        // Optimistic: confirm in the chat immediately, save in the background.
+        let count = parsed.exercises.count
+        let confirmation: String
+        if count == 0, parsed.isCardioOnly {
+            confirmation = "Logged \(parsed.cardioActivity ?? "cardio") ✓"
+        } else {
+            confirmation = "Logged \(count) exercise\(count == 1 ? "" : "s") ✓"
+        }
+        replace(draftID, with: .saved(confirmation))
+
+        let req = CreateSessionRequest(
+            deviceUuid: targetUUID,
+            workoutDate: date.apiDateString,
+            source: "assistant",
+            rawTranscript: nil,
+            workoutType: parsed.workoutType,
+            bodyWeightLbs: parsed.bodyWeightLbs,
+            cardioNotes: parsed.cardioNotes,
+            cardioActivity: parsed.cardioActivity,
+            cardioDistance: parsed.cardioDistance,
+            cardioDistanceUnit: parsed.cardioDistanceUnit,
+            durationMinutes: parsed.durationMinutes,
+            sessionNotes: nil,
+            exercises: parsed.exercises
+        )
         Task {
-            let req = CreateSessionRequest(
-                deviceUuid: targetUUID,
-                workoutDate: date.apiDateString,
-                source: "assistant",
-                rawTranscript: nil,
-                workoutType: parsed.workoutType,
-                bodyWeightLbs: parsed.bodyWeightLbs,
-                cardioNotes: parsed.cardioNotes,
-                sessionNotes: nil,
-                exercises: parsed.exercises
-            )
             do {
-                let _: WorkoutSession = try await APIClient.shared.post(APIEndpoints.sessions, body: req)
-                let count = parsed.exercises.count
-                replace(draftID, with: .saved("Logged \(count) exercise\(count == 1 ? "" : "s") ✓"))
-                NotificationCenter.default.post(name: .workoutLogged, object: nil)
+                let saved: WorkoutSession = try await APIClient.shared.post(APIEndpoints.sessions, body: req)
+                // Notify with the saved session so listeners can update instantly.
+                NotificationCenter.default.post(name: .workoutLogged, object: saved)
             } catch {
-                appendAssistant(.text("Couldn't save that: \(error.localizedDescription)"))
+                appendAssistant(.text("Hmm, that didn't save — \(error.localizedDescription). Want to try again?"))
             }
-            isBusy = false
         }
     }
 
@@ -486,13 +500,38 @@ final class AssistantViewModel: ObservableObject {
     // MARK: - Questions
 
     private func answer(_ question: String, replacing id: UUID) async {
-        let req = AssistantChatRequest(deviceUuid: targetUUID, message: question)
+        let req = AssistantChatRequest(
+            deviceUuid: targetUUID,
+            message: question,
+            history: recentTurns(excluding: question)
+        )
         do {
             let resp: AssistantChatResponse = try await APIClient.shared.post(APIEndpoints.assistantChat, body: req)
             replace(id, with: .text(resp.reply.isEmpty ? "I'm not sure about that one." : resp.reply))
         } catch {
             replace(id, with: .text("I couldn't reach the coach right now. \(error.localizedDescription)"))
         }
+    }
+
+    /// The recent chat transcript (plain text turns, oldest first) sent with a
+    /// question so the assistant can resolve follow-ups. Excludes the current
+    /// question (just appended) and the empty "thinking" placeholder.
+    private func recentTurns(excluding question: String) -> [ChatTurn] {
+        var turns: [ChatTurn] = []
+        for m in messages {
+            let content: String
+            switch m.body {
+            case .text(let t): content = t
+            case .saved(let t): content = t
+            default: continue
+            }
+            guard !content.isEmpty else { continue }
+            turns.append(ChatTurn(role: m.author == .user ? "user" : "assistant", content: content))
+        }
+        if let last = turns.last, last.role == "user", last.content == question {
+            turns.removeLast()
+        }
+        return Array(turns.suffix(8))
     }
 
     // MARK: - Voice

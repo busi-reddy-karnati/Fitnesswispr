@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Central store for the user's own profile (name, body metrics, avatar) and
 /// any linked profiles shared with them ("Spotter" sharing). Persisted locally.
@@ -9,13 +10,15 @@ import SwiftUI
 final class ProfileStore: ObservableObject {
     static let shared = ProfileStore()
 
-    @Published var myName: String { didSet { persist() } }
+    @Published var myName: String { didSet { persist(); scheduleNamePush() } }
     @Published var age: Int { didSet { persist() } }            // 0 = unset
     @Published var heightCm: Double { didSet { persist() } }    // 0 = unset
     @Published var weightLbs: Double { didSet { persist() } }   // 0 = unset
     @Published var linked: [Profile] { didSet { persist() } }
     @Published var activeID: String { didSet { persist() } }
     @Published var avatarData: Data?
+    /// Spotters who currently have access to *your* profile (owner view).
+    @Published var grantees: [Grantee] = []
 
     private let defaultsKey = "profile_store_v1"
 
@@ -40,19 +43,32 @@ final class ProfileStore: ObservableObject {
         age = loaded.age
         heightCm = loaded.heightCm
         weightLbs = loaded.weightLbs
-        linked = loaded.linked
-        activeID = loaded.activeID.isEmpty ? DeviceUUID.shared.id : loaded.activeID
+        linked = ProfileStore.deduped(loaded.linked)
+        activeID = loaded.activeID.isEmpty ? Identity.current : loaded.activeID
         avatarData = ProfileStore.loadAvatar()
 
         // Ensure the active profile still exists.
-        if activeID != DeviceUUID.shared.id && !linked.contains(where: { $0.id == activeID }) {
-            activeID = DeviceUUID.shared.id
+        if activeID != Identity.current && !linked.contains(where: { $0.id == activeID }) {
+            activeID = Identity.current
         }
+    }
+
+    /// Collapse duplicate links for the same person (e.g. added twice, or with
+    /// different UUID casing) into one entry, keeping the most recent.
+    private static func deduped(_ profiles: [Profile]) -> [Profile] {
+        var seen = Set<String>()
+        var result: [Profile] = []
+        for p in profiles.reversed() {
+            let key = p.id.lowercased()
+            guard seen.insert(key).inserted else { continue }
+            result.append(Profile(id: key, name: p.name, access: p.access, serverManaged: p.serverManaged))
+        }
+        return result.reversed()
     }
 
     // MARK: - Derived
 
-    var meID: String { DeviceUUID.shared.id }
+    var meID: String { Identity.current }
 
     var me: Profile {
         Profile(id: meID, name: myName.isEmpty ? "Me" : myName, access: .owner)
@@ -73,6 +89,13 @@ final class ProfileStore: ObservableObject {
         activeID = id
     }
 
+    /// Re-point the active profile at "me". Call after signing in or out so the
+    /// app reloads data for the (possibly new) canonical identity.
+    func switchToSelf() {
+        activeID = meID
+        objectWillChange.send()
+    }
+
     func remove(_ id: String) {
         linked.removeAll { $0.id == id }
         if activeID == id { activeID = meID }
@@ -81,6 +104,93 @@ final class ProfileStore: ObservableObject {
     func setAvatar(_ data: Data?) {
         avatarData = data
         ProfileStore.saveAvatar(data)
+        if let data { uploadAvatar(data) }
+    }
+
+    private var didPushProfile = false
+    private var namePushTask: Task<Void, Never>?
+
+    /// Best-effort push of profile info (name + photo) so spotters see it.
+    /// Safe to call repeatedly; only does work once per launch.
+    func pushProfileIfNeeded() {
+        guard !didPushProfile else { return }
+        didPushProfile = true
+        if let data = avatarData { uploadAvatar(data) }
+        pushName()
+    }
+
+    /// Debounced name push — `myName` changes on every keystroke while editing.
+    private func scheduleNamePush() {
+        namePushTask?.cancel()
+        namePushTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 600_000_000)
+            guard !Task.isCancelled else { return }
+            self?.pushName()
+        }
+    }
+
+    private func pushName() {
+        let name = myName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let uuid = meID
+        Task {
+            let body = ProfileUpdateRequest(name: name)
+            let _: ProfileInfo? = try? await APIClient.shared.put(APIEndpoints.profile(uuid), body: body)
+        }
+    }
+
+    /// Refresh the names of people you're spotting from the backend, so a name
+    /// change on their side shows up for you.
+    func refreshLinkedProfiles() {
+        let targets = linked
+        guard !targets.isEmpty else { return }
+        Task {
+            var updates: [(id: String, name: String?, hasAvatar: Bool)] = []
+            for p in targets {
+                if let info: ProfileInfo = try? await APIClient.shared.get(APIEndpoints.profile(p.id)) {
+                    updates.append((p.id, info.name, info.hasAvatar))
+                }
+            }
+            let resolved = updates
+            await MainActor.run { ProfileStore.shared.applyLinkedProfileInfo(resolved) }
+        }
+    }
+
+    @MainActor
+    private func applyLinkedProfileInfo(_ updates: [(id: String, name: String?, hasAvatar: Bool)]) {
+        for u in updates {
+            if let name = u.name, !name.isEmpty,
+               let idx = linked.firstIndex(where: { $0.id == u.id }), linked[idx].name != name {
+                linked[idx].name = name
+            }
+            // Self-heal a stale avatar cache-miss: if the server now has a photo
+            // for this person, re-fetch it even if we earlier cached a 404.
+            AvatarCache.shared.refreshIfNeeded(u.id, hasAvatar: u.hasAvatar)
+        }
+    }
+
+    private func uploadAvatar(_ data: Data) {
+        guard let jpeg = ProfileStore.downscaledJPEG(data) else { return }
+        let uuid = meID
+        Task {
+            try? await APIClient.shared.putData(
+                APIEndpoints.profileAvatar(uuid), data: jpeg, contentType: "image/jpeg"
+            )
+            await AvatarCache.shared.invalidate(uuid)
+        }
+    }
+
+    /// Shrink a photo to a reasonable avatar size to keep uploads small.
+    private static func downscaledJPEG(_ data: Data, maxDimension: CGFloat = 512) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let longest = max(image.size.width, image.size.height)
+        let scale = longest > maxDimension ? maxDimension / longest : 1
+        let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        let renderer = UIGraphicsImageRenderer(size: newSize, format: format)
+        let resized = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+        return resized.jpegData(compressionQuality: 0.8)
     }
 
     // MARK: - Sharing
@@ -119,17 +229,106 @@ final class ProfileStore: ObservableObject {
               let invite = try? JSONDecoder().decode(ProfileInvite.self, from: data)
         else { throw RedeemError.invalid }
 
-        guard invite.uuid != meID else { throw RedeemError.isSelf }
+        // Normalise to lowercase so the same person added twice (or with
+        // different UUID casing) can never produce a duplicate entry.
+        let ownerID = invite.uuid.lowercased()
+        guard ownerID != meID.lowercased() else { throw RedeemError.isSelf }
 
         let access = ProfileAccess(rawValue: invite.access) ?? .read
-        let profile = Profile(id: invite.uuid, name: invite.name, access: access)
+        let profile = Profile(id: ownerID, name: invite.name, access: access, serverManaged: false)
 
-        if let idx = linked.firstIndex(where: { $0.id == profile.id }) {
-            linked[idx] = profile   // update name/access
+        if let idx = linked.firstIndex(where: { $0.id.lowercased() == ownerID }) {
+            linked[idx] = profile   // update name/access, never duplicate
         } else {
             linked.append(profile)
         }
+        registerGrant(owner: ownerID, access: access)
         return profile
+    }
+
+    // MARK: - Grants (who can access whom)
+
+    /// Register a grant with the backend so the owner can see (and revoke) this
+    /// access, and so we can detect when it's revoked. Marks the link
+    /// server-managed on success.
+    private func registerGrant(owner: String, access: ProfileAccess) {
+        let me = meID
+        let granteeName = myName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = GrantCreateRequest(
+            granteeUuid: me,
+            access: access == .write ? "write" : "read",
+            granteeName: granteeName.isEmpty ? nil : granteeName
+        )
+        Task {
+            guard let _: Grantee = try? await APIClient.shared.post(
+                APIEndpoints.grants(owner: owner), body: body
+            ) else { return }
+            await MainActor.run {
+                let store = ProfileStore.shared
+                if let idx = store.linked.firstIndex(where: { $0.id.lowercased() == owner.lowercased() }) {
+                    store.linked[idx].serverManaged = true
+                }
+            }
+        }
+    }
+
+    /// Pull the profiles you're currently spotting and drop any whose access was
+    /// revoked by the owner; also keep names/access in sync.
+    func reconcileSpotting() {
+        let me = meID
+        Task {
+            guard let spots: [Spotting] = try? await APIClient.shared.get(APIEndpoints.spotting(me)) else { return }
+            let byOwner = Dictionary(spots.map { ($0.ownerUuid.lowercased(), $0) }, uniquingKeysWith: { a, _ in a })
+            await MainActor.run { ProfileStore.shared.applySpotting(byOwner) }
+        }
+    }
+
+    @MainActor
+    private func applySpotting(_ live: [String: Spotting]) {
+        var result: [Profile] = []
+        var changed = false
+        for var p in linked {
+            let key = p.id.lowercased()
+            if let s = live[key] {
+                let acc: ProfileAccess = s.access == "write" ? .write : .read
+                if p.access != acc { p.access = acc; changed = true }
+                if let n = s.ownerName, !n.isEmpty, p.name != n { p.name = n; changed = true }
+                if p.serverManaged != true { p.serverManaged = true; changed = true }
+                result.append(p)
+            } else if p.isServerManaged {
+                // Access was revoked by the owner — remove this profile.
+                changed = true
+                if activeID.lowercased() == key { activeID = meID }
+            } else {
+                result.append(p)   // legacy link (no grant yet) — leave it
+            }
+        }
+        if changed { linked = result }
+    }
+
+    /// Owner: load the spotters who currently have access to your profile.
+    func loadGrantees() {
+        let me = meID
+        Task {
+            let list: [Grantee] = (try? await APIClient.shared.get(APIEndpoints.grants(owner: me))) ?? []
+            await MainActor.run { ProfileStore.shared.grantees = list }
+        }
+    }
+
+    /// Owner: revoke a spotter's access to your profile.
+    func revokeGrant(_ grantee: Grantee) {
+        grantees.removeAll { $0.granteeUuid == grantee.granteeUuid }
+        let me = meID
+        Task { try? await APIClient.shared.delete(APIEndpoints.grant(owner: me, grantee: grantee.granteeUuid)) }
+    }
+
+    /// Spotter: stop spotting someone — remove them locally and drop the grant
+    /// so they no longer appear in the owner's access list.
+    func stopSpotting(_ id: String) {
+        let owner = id.lowercased()
+        let me = meID
+        remove(id)
+        Task { try? await APIClient.shared.delete(APIEndpoints.grant(owner: owner, grantee: me)) }
     }
 
     // MARK: - Persistence

@@ -186,7 +186,7 @@ struct AssistantView: View {
 
     private var loggingForBanner: some View {
         HStack(spacing: 8) {
-            AvatarView(imageData: nil, initials: profile.active.initials, size: 22)
+            RemoteAvatarView(uuid: profile.active.id, initials: profile.active.initials, size: 22)
             Text("Logging for \(profile.active.name)")
                 .font(.caption.weight(.medium))
             Spacer()
@@ -329,10 +329,10 @@ private struct WorkoutDraftCard: View {
                 }
             }
 
-            if let cardio = parsed.cardioNotes, !cardio.isEmpty {
-                Label(cardio, systemImage: "figure.run")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+            if let cardio = parsed.cardioSummaryLine {
+                Label(cardio, systemImage: CardioSummary.symbol)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundColor(.appAccent)
             }
 
             if !saved {

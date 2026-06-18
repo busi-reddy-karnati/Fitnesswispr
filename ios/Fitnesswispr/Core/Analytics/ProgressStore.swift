@@ -1,5 +1,17 @@
 import Foundation
 
+struct HealthDayDTO: Codable {
+    let workoutDate: String
+    let category: String
+    let symbol: String
+    let durationMinutes: Int
+}
+
+struct HealthSyncRequest: Encodable {
+    let deviceUuid: String
+    let workouts: [HealthDayDTO]
+}
+
 struct ExercisePoint: Identifiable {
     let id = UUID()
     let date: Date
@@ -87,23 +99,66 @@ final class ProgressStore: ObservableObject {
             self.error = error.localizedDescription
         }
 
-        // Apple Health enriches consistency but must never block the critical
-        // path: use cached results, and sync just once in the background.
-        if deviceUUID == DeviceUUID.shared.id {
+        // Apple Health enriches consistency. For yourself, live HealthKit is
+        // authoritative (no extra network round-trip), and we push it so your
+        // spotters can see it. For people you spot, fetch their pushed days.
+        if deviceUUID == Identity.current {
             if HealthKitManager.shared.didSync {
                 appleDays = HealthKitManager.shared.workoutsByDay
+                Task { [weak self] in await self?.pushHealthToBackend(HealthKitManager.shared.workoutsByDay) }
             } else {
+                appleDays = [:]
                 Task { [weak self] in await self?.syncAppleFitness() }
             }
         } else {
-            appleDays = [:]
+            appleDays = await fetchBackendHealth(
+                deviceUUID, start: start.apiDateString, end: end.apiDateString
+            )
         }
     }
 
-    /// Pulls Apple Health workout days to enrich the consistency view.
+    /// Pulls Apple Health workout days to enrich the consistency view, and
+    /// pushes them so anyone spotting you sees your Apple Fitness consistency.
     func syncAppleFitness() async {
         await HealthKitManager.shared.sync()
         appleDays = HealthKitManager.shared.workoutsByDay
+        await pushHealthToBackend(appleDays)
+    }
+
+    private func pushHealthToBackend(_ byDay: [String: [AppleFitnessWorkout]]) async {
+        let items = byDay.flatMap { day, workouts in
+            workouts.map {
+                HealthDayDTO(
+                    workoutDate: day,
+                    category: $0.category,
+                    symbol: $0.symbol,
+                    durationMinutes: $0.durationMinutes
+                )
+            }
+        }
+        let req = HealthSyncRequest(deviceUuid: Identity.current, workouts: items)
+        try? await APIClient.shared.postNoContent(APIEndpoints.healthSync, body: req)
+    }
+
+    private func fetchBackendHealth(
+        _ uuid: String, start: String, end: String
+    ) async -> [String: [AppleFitnessWorkout]] {
+        guard let dtos: [HealthDayDTO] = try? await APIClient.shared.get(
+            APIEndpoints.health(deviceUUID: uuid, startDate: start, endDate: end)
+        ) else { return [:] }
+        var byDay: [String: [AppleFitnessWorkout]] = [:]
+        for d in dtos {
+            guard let date = Date.from(apiString: d.workoutDate) else { continue }
+            byDay[d.workoutDate, default: []].append(
+                AppleFitnessWorkout(
+                    category: d.category,
+                    symbol: d.symbol,
+                    date: date,
+                    durationMinutes: d.durationMinutes
+                )
+            )
+        }
+        return byDay
     }
 
     // MARK: - Optimistic local mutations
@@ -188,32 +243,41 @@ final class ProgressStore: ObservableObject {
     }
 
     func summary(for region: MuscleRegion) -> MuscleSummary {
-        var byName: [String: [(date: Date, ex: Exercise)]] = [:]
+        // Group by canonical name so spelling/plural/synonym variants of the
+        // same movement (e.g. "Leg Extension" / "Leg Extensions") merge into one.
+        var byKey: [String: [(date: Date, ex: Exercise)]] = [:]
         var lastDate: Date?
         for s in sessions {
             guard let d = Date.from(apiString: s.workoutDate) else { continue }
             for ex in s.exercises {
                 guard MuscleRegion.classify(muscleGroup: ex.muscleGroup, exerciseName: ex.name) == region else { continue }
-                byName[ex.name, default: []].append((d, ex))
+                byKey[ExerciseName.canonicalKey(ex.name), default: []].append((d, ex))
                 if lastDate == nil || d > lastDate! { lastDate = d }
             }
         }
-        let summaries = byName
-            .map { buildExerciseSummary(name: $0.key, occurrences: $0.value) }
+        let summaries = byKey.values
+            .map { buildExerciseSummary(name: displayName(for: $0), occurrences: $0) }
             .sorted { ($0.lastDate ?? .distantPast) > ($1.lastDate ?? .distantPast) }
         return MuscleSummary(region: region, lastDate: lastDate, exercises: summaries)
     }
 
     func summary(forExercise name: String) -> ExerciseSummary? {
+        let key = ExerciseName.canonicalKey(name)
         var occ: [(date: Date, ex: Exercise)] = []
         for s in sessions {
             guard let d = Date.from(apiString: s.workoutDate) else { continue }
-            for ex in s.exercises where ex.name.caseInsensitiveCompare(name) == .orderedSame {
+            for ex in s.exercises where ExerciseName.canonicalKey(ex.name) == key {
                 occ.append((d, ex))
             }
         }
         guard !occ.isEmpty else { return nil }
-        return buildExerciseSummary(name: name, occurrences: occ)
+        return buildExerciseSummary(name: displayName(for: occ), occurrences: occ)
+    }
+
+    /// Pick the spelling the user most recently used for a merged exercise.
+    private func displayName(for occurrences: [(date: Date, ex: Exercise)]) -> String {
+        let name = occurrences.max { $0.date < $1.date }?.ex.name ?? ""
+        return name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func buildExerciseSummary(name: String, occurrences: [(date: Date, ex: Exercise)]) -> ExerciseSummary {

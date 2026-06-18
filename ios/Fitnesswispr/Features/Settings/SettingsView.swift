@@ -1,16 +1,20 @@
 import SwiftUI
 import PhotosUI
+import AuthenticationServices
 
 struct SettingsView: View {
     @StateObject private var prefs = UserPreferences()
     @ObservedObject private var health = HealthKitManager.shared
     @ObservedObject private var profile = ProfileStore.shared
+    @ObservedObject private var account = AccountStore.shared
     @State private var syncing = false
     @State private var photoItem: PhotosPickerItem?
+    @State private var authError: String?
 
     var body: some View {
         Form {
             profileSection
+            accountSection
             spottersSection
 
             Section("Units") {
@@ -119,6 +123,82 @@ struct SettingsView: View {
                     .multilineTextAlignment(.trailing)
                     .frame(width: 80)
                 Text("lbs").foregroundColor(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var accountSection: some View {
+        Section {
+            if let acc = account.account {
+                HStack {
+                    Label("Signed in", systemImage: "checkmark.seal.fill")
+                        .foregroundColor(.green)
+                    Spacer()
+                    if let email = acc.email {
+                        Text(email)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
+                }
+                Button(role: .destructive) {
+                    account.signOut()
+                } label: {
+                    Text("Sign out")
+                }
+            } else {
+                SignInWithAppleButton(.signIn) { request in
+                    request.requestedScopes = [.fullName, .email]
+                } onCompletion: { result in
+                    handleAppleSignIn(result)
+                }
+                .signInWithAppleButtonStyle(.black)
+                .frame(height: 44)
+                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+            }
+        } header: {
+            Text("Account")
+        } footer: {
+            Text(account.isSignedIn
+                 ? "Your workouts are backed up to your account and sync across your devices."
+                 : "Sign in to back up your workouts and access them on any device. Optional — your data stays on this device until you do.")
+        }
+        .alert("Sign-in failed", isPresented: .constant(authError != nil)) {
+            Button("OK") { authError = nil }
+        } message: {
+            Text(authError ?? "")
+        }
+    }
+
+    private func handleAppleSignIn(_ result: Result<ASAuthorization, Error>) {
+        switch result {
+        case .success(let auth):
+            guard let credential = auth.credential as? ASAuthorizationAppleIDCredential,
+                  let tokenData = credential.identityToken,
+                  let token = String(data: tokenData, encoding: .utf8) else {
+                authError = "Apple didn't return a valid identity token."
+                return
+            }
+            let name = [credential.fullName?.givenName, credential.fullName?.familyName]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            Task {
+                do {
+                    try await account.signInWithApple(
+                        identityToken: token,
+                        fullName: name.isEmpty ? nil : name
+                    )
+                    if profile.myName.isEmpty, !name.isEmpty {
+                        profile.myName = name
+                    }
+                } catch {
+                    authError = error.localizedDescription
+                }
+            }
+        case .failure(let error):
+            // User cancelling isn't an error worth surfacing.
+            if (error as? ASAuthorizationError)?.code != .canceled {
+                authError = error.localizedDescription
             }
         }
     }

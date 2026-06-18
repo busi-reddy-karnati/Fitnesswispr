@@ -9,7 +9,7 @@ final class SettingsViewModel: ObservableObject {
     func exportWorkouts(format: String) async -> Data? {
         isExporting = true
         defer { isExporting = false }
-        let url = APIEndpoints.export(deviceUUID: DeviceUUID.shared.id, format: format)
+        let url = APIEndpoints.export(deviceUUID: Identity.current, format: format)
         do {
             return try await APIClient.shared.download(url)
         } catch {

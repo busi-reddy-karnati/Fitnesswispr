@@ -12,6 +12,15 @@ struct DayWorkoutSheet: View {
 
     private var isEmpty: Bool { sessions.isEmpty && appleWorkouts.isEmpty }
 
+    /// Distance (when available) + duration for an Apple Fitness workout,
+    /// e.g. "3.1 mi · 25 min".
+    private func appleMetrics(_ w: AppleFitnessWorkout) -> String {
+        var parts: [String] = []
+        if let dist = w.distanceText { parts.append(dist) }
+        if w.durationMinutes > 0 { parts.append("\(w.durationMinutes) min") }
+        return parts.joined(separator: " · ")
+    }
+
     var body: some View {
         NavigationStack {
             if isEmpty {
@@ -22,18 +31,32 @@ struct DayWorkoutSheet: View {
                         Section("Logged in SpotRep") {
                             ForEach(sessions) { session in
                                 NavigationLink {
-                                    SessionDetailView(
-                                        session: session,
-                                        onChanged: onChanged,
-                                        onUpdated: onUpdated,
-                                        onDeleted: onDeleted
-                                    )
+                                    if session.isCardioOnly {
+                                        CardioProgressView(activity: session.cardioActivity ?? "Cardio")
+                                    } else {
+                                        SessionDetailView(
+                                            session: session,
+                                            onChanged: onChanged,
+                                            onUpdated: onUpdated,
+                                            onDeleted: onDeleted
+                                        )
+                                    }
                                 } label: {
                                     VStack(alignment: .leading, spacing: 8) {
                                         HStack {
                                             WorkoutTypeBadge(type: session.workoutType)
                                             Spacer()
-                                            Text("\(session.exercises.count) exercises")
+                                            if !session.isCardioOnly {
+                                                Text("\(session.exercises.count) exercises")
+                                                    .font(.caption)
+                                                    .foregroundColor(.secondary)
+                                            }
+                                        }
+                                        if session.isCardioOnly, let line = session.cardioSummaryLine {
+                                            Label(line, systemImage: CardioSummary.symbol)
+                                                .font(.subheadline)
+                                                .foregroundColor(.appAccent)
+                                            Label("View progress", systemImage: "chart.line.uptrend.xyaxis")
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
                                         }
@@ -57,11 +80,9 @@ struct DayWorkoutSheet: View {
                                     Text(w.category)
                                         .font(.subheadline)
                                     Spacer()
-                                    if w.durationMinutes > 0 {
-                                        Text("\(w.durationMinutes) min")
-                                            .font(.caption)
-                                            .foregroundColor(.secondary)
-                                    }
+                                    Text(appleMetrics(w))
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
                                 }
                             }
                         }

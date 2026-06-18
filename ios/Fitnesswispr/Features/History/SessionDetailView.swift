@@ -6,7 +6,7 @@ struct SessionDetailView: View {
     @State private var session: WorkoutSession
     @State private var isEditing = false
     @State private var pendingDelete: Exercise?
-    @State private var working = false
+    @State private var showCardioDeleteConfirm = false
     @State private var error: String?
     @State private var editedDate = Date()
 
@@ -55,9 +55,34 @@ struct SessionDetailView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 10))
                 }
 
-                if let cardio = session.cardioNotes {
-                    Label(cardio, systemImage: "figure.run")
-                        .font(.subheadline)
+                if let cardio = session.cardioSummaryLine {
+                    Label(cardio, systemImage: CardioSummary.symbol)
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.appAccent)
+                }
+
+                if session.isCardioOnly {
+                    NavigationLink {
+                        CardioProgressView(activity: session.cardioActivity ?? "Cardio")
+                    } label: {
+                        Label("View \((session.cardioActivity ?? "cardio").lowercased()) progress", systemImage: "chart.line.uptrend.xyaxis")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(12)
+                            .background(Color.cardBackground)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    if canEdit {
+                        Button(role: .destructive) { showCardioDeleteConfirm = true } label: {
+                            Label("Delete this entry", systemImage: "trash")
+                                .font(.subheadline.weight(.medium))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(12)
+                                .background(Color.cardBackground)
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                        }
+                    }
                 }
 
                 ForEach(session.exercises) { exercise in
@@ -99,11 +124,6 @@ struct SessionDetailView: View {
                 }
             }
         }
-        .overlay {
-            if working {
-                LoadingOverlay(message: "Saving...")
-            }
-        }
         .confirmationDialog(
             "Delete this exercise?",
             isPresented: Binding(
@@ -117,13 +137,37 @@ struct SessionDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         }
+        .confirmationDialog(
+            "Delete this \((session.cardioActivity ?? "cardio").lowercased()) entry?",
+            isPresented: $showCardioDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete", role: .destructive) { deleteWholeSession() }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Delete the entire session (used for cardio entries, which have no
+    /// individual exercises to remove). Optimistic: dismiss immediately.
+    private func deleteWholeSession() {
+        guard let sessionId = session.sessionId else { return }
+        onDeleted?(sessionId)
+        onChanged?()
+        dismiss()
+        Task {
+            try? await APIClient.shared.delete(APIEndpoints.session(sessionId))
+        }
     }
 
     private func saveDateIfChanged() {
         guard let sessionId = session.sessionId else { return }
         let newStr = editedDate.apiDateString
         guard newStr != session.workoutDate else { return }
-        working = true
+
+        // Optimistic: reflect the new date immediately, sync in the background.
+        let previous = session
+        session.workoutDate = newStr
+        onUpdated?(session)
         Task {
             do {
                 let req = UpdateSessionRequest(workoutDate: newStr)
@@ -131,12 +175,12 @@ struct SessionDetailView: View {
                     APIEndpoints.session(sessionId), body: req
                 )
                 session = updated
-                working = false
                 onUpdated?(updated)
                 onChanged?()
             } catch {
+                session = previous
+                onUpdated?(previous)
                 self.error = "Couldn't change the date: \(error.localizedDescription)"
-                working = false
             }
         }
     }
@@ -144,31 +188,40 @@ struct SessionDetailView: View {
     private func delete(_ exercise: Exercise) {
         guard let sessionId = session.sessionId else { return }
         pendingDelete = nil
+        let previous = session
         let remaining = session.exercises.filter { $0.id != exercise.id }
-        working = true
+
+        if remaining.isEmpty {
+            // Last exercise — remove the whole session. Dismiss immediately.
+            onDeleted?(sessionId)
+            onChanged?()
+            dismiss()
+            Task {
+                do {
+                    try await APIClient.shared.delete(APIEndpoints.session(sessionId))
+                } catch {
+                    // Best-effort; the parent can recover on its next refresh.
+                }
+            }
+            return
+        }
+
+        // Optimistic: drop the exercise now, sync in the background.
+        session.exercises = remaining
+        onUpdated?(session)
         Task {
             do {
-                if remaining.isEmpty {
-                    // Last exercise — remove the whole session.
-                    try await APIClient.shared.delete(APIEndpoints.session(sessionId))
-                    working = false
-                    onDeleted?(sessionId)
-                    onChanged?()
-                    dismiss()
-                } else {
-                    let req = UpdateSessionRequest(exercises: remaining)
-                    let updated: WorkoutSession = try await APIClient.shared.put(
-                        APIEndpoints.session(sessionId), body: req
-                    )
-                    session = updated
-                    working = false
-                    if session.exercises.isEmpty { isEditing = false }
-                    onUpdated?(updated)
-                    onChanged?()
-                }
+                let req = UpdateSessionRequest(exercises: remaining)
+                let updated: WorkoutSession = try await APIClient.shared.put(
+                    APIEndpoints.session(sessionId), body: req
+                )
+                session = updated
+                onUpdated?(updated)
+                onChanged?()
             } catch {
+                session = previous
+                onUpdated?(previous)
                 self.error = "Couldn't delete: \(error.localizedDescription)"
-                working = false
             }
         }
     }

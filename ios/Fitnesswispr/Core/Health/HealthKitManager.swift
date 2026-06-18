@@ -9,6 +9,15 @@ struct AppleFitnessWorkout: Identifiable, Hashable {
     let symbol: String
     let date: Date
     let durationMinutes: Int
+    /// Distance covered (meters), when Apple recorded it (runs, cycling, etc.).
+    var distanceMeters: Double?
+
+    /// Distance formatted in miles for display, e.g. "3.1 mi". Nil when absent.
+    var distanceText: String? {
+        guard let meters = distanceMeters, meters > 0 else { return nil }
+        let miles = meters / 1609.344
+        return String(format: miles >= 10 ? "%.0f mi" : "%.1f mi", miles)
+    }
 }
 
 @MainActor
@@ -61,11 +70,13 @@ final class HealthKitManager: ObservableObject {
         for w in workouts {
             let (name, symbol) = Self.describe(w.workoutActivityType)
             let minutes = Int((w.duration / 60).rounded())
+            let meters = w.totalDistance?.doubleValue(for: .meter())
             let item = AppleFitnessWorkout(
                 category: name,
                 symbol: symbol,
                 date: w.startDate,
-                durationMinutes: minutes
+                durationMinutes: minutes,
+                distanceMeters: meters
             )
             byDay[w.startDate.apiDateString, default: []].append(item)
         }

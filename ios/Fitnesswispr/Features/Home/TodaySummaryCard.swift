@@ -11,9 +11,15 @@ struct TodaySummaryCard: View {
                 Spacer()
                 WorkoutTypeBadge(type: session.workoutType)
             }
-            Text("\(session.exercises.count) exercises")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+            if session.isCardioOnly, let line = session.cardioSummaryLine {
+                Label(line, systemImage: CardioSummary.symbol)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                Text("\(session.exercises.count) exercises")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            }
             if let bw = session.bodyWeightLbs {
                 Text("Body weight: \(bw, specifier: "%.1f") lbs")
                     .font(.caption)
