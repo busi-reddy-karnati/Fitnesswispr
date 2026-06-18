@@ -4,6 +4,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
+from app.config import settings
+
 
 class ExerciseSetCreate(BaseModel):
     set_number: int
@@ -19,11 +21,13 @@ class ExerciseCreate(BaseModel):
     equipment: str | None = None
     muscle_group: str | None = None
     notes: str | None = None
-    sets: list[ExerciseSetCreate] = []
+    sets: list[ExerciseSetCreate] = Field(
+        default_factory=list, max_length=settings.MAX_SETS_PER_EXERCISE
+    )
 
 
 class ParseRequest(BaseModel):
-    transcript: str
+    transcript: str = Field(max_length=settings.MAX_TRANSCRIPT_CHARS)
     device_uuid: str
     unit_preference: str = "lbs"
     context: dict = Field(default_factory=dict)
@@ -76,7 +80,9 @@ class CreateSessionRequest(BaseModel):
     cardio_distance_unit: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
-    exercises: list[ExerciseCreate] = []
+    exercises: list[ExerciseCreate] = Field(
+        default_factory=list, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
 
 
 class UpdateSessionRequest(BaseModel):
@@ -91,4 +97,6 @@ class UpdateSessionRequest(BaseModel):
     cardio_distance_unit: str | None = None
     session_notes: str | None = None
     duration_minutes: int | None = None
-    exercises: list[ExerciseCreate] | None = None
+    exercises: list[ExerciseCreate] | None = Field(
+        default=None, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )

@@ -8,26 +8,23 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.dependencies import get_db
 from app.models.exercise import Exercise as ExerciseModel
 from app.models.exercise_set import ExerciseSet as ExerciseSetModel
 from app.models.session import WorkoutSession
-from app.ratelimit import RateLimiter, make_rate_limit_dependency
+from app.ratelimit import enforce_llm_budget
 from app.config import settings
 from app.services import gemini_service
 
 router = APIRouter()
 
-_import_limiter = RateLimiter(
-    max_requests=settings.PARSE_RATE_LIMIT,
-    window_seconds=settings.PARSE_RATE_WINDOW_SECONDS,
-)
-enforce_import_rate_limit = make_rate_limit_dependency(_import_limiter)
-
 MAX_ROWS = 220
+# base64 inflates ~4/3; cap the encoded string a bit above the decoded limit so
+# oversized uploads are rejected with a clean 422 before we even decode them.
+_MAX_BASE64_CHARS = (settings.MAX_IMPORT_BYTES * 4) // 3 + 1024
 
 
 # --------------------------------------------------------------------------- #
@@ -35,7 +32,7 @@ MAX_ROWS = 220
 # --------------------------------------------------------------------------- #
 class PreviewRequest(BaseModel):
     kind: str  # "spreadsheet" | "photo"
-    content_base64: str
+    content_base64: str = Field(max_length=_MAX_BASE64_CHARS)
     filename: str | None = None
     mime: str | None = None
 
@@ -51,7 +48,9 @@ class ImportExercise(BaseModel):
     name: str
     muscle_group: str | None = None
     notes: str | None = None
-    sets: list[ImportSet] = []
+    sets: list[ImportSet] = Field(
+        default_factory=list, max_length=settings.MAX_SETS_PER_EXERCISE
+    )
 
 
 class ImportWorkout(BaseModel):
@@ -61,7 +60,9 @@ class ImportWorkout(BaseModel):
     day_label: str | None = None
     workout_date: str | None = None
     workout_type: str | None = None
-    exercises: list[ImportExercise] = []
+    exercises: list[ImportExercise] = Field(
+        default_factory=list, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
 
 
 class PreviewResponse(BaseModel):
@@ -80,11 +81,15 @@ class CommitItem(BaseModel):
     workout_date: date
     workout_type: str | None = None
     source: str = "import"
-    exercises: list[ImportExercise] = []
+    exercises: list[ImportExercise] = Field(
+        default_factory=list, max_length=settings.MAX_EXERCISES_PER_SESSION
+    )
 
 
 class CommitRequest(BaseModel):
-    items: list[CommitItem] = []
+    items: list[CommitItem] = Field(
+        default_factory=list, max_length=settings.MAX_COMMIT_ITEMS
+    )
 
 
 class CommitResponse(BaseModel):
@@ -123,13 +128,19 @@ def _count_sets(workouts: list[ImportWorkout]) -> int:
 @router.post(
     "/import/preview",
     response_model=PreviewResponse,
-    dependencies=[Depends(enforce_import_rate_limit)],
+    dependencies=[Depends(enforce_llm_budget)],
 )
 async def import_preview(body: PreviewRequest) -> PreviewResponse:
     try:
         raw = base64.b64decode(body.content_base64)
     except Exception as exc:
         raise HTTPException(status_code=422, detail="Invalid file content") from exc
+
+    if len(raw) > settings.MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large (max {settings.MAX_IMPORT_BYTES // (1024 * 1024)} MB).",
+        )
 
     if body.kind == "spreadsheet":
         return await _preview_spreadsheet(raw)
@@ -152,6 +163,11 @@ async def _preview_spreadsheet(raw: bytes) -> PreviewResponse:
         grid = _render_sheet(ws)
         if grid and _looks_like_training(grid):
             sheets.append(((ws.title or "Person").strip(), grid))
+
+    # Cap fan-out: one request must not spawn an unbounded number of Gemini
+    # calls. Process at most MAX_IMPORT_SHEETS training tabs.
+    truncated = len(sheets) > settings.MAX_IMPORT_SHEETS
+    sheets = sheets[: settings.MAX_IMPORT_SHEETS]
 
     results = await asyncio.gather(
         *(gemini_service.extract_spreadsheet_sheet(grid) for _, grid in sheets),
@@ -189,6 +205,10 @@ async def _preview_spreadsheet(raw: bytes) -> PreviewResponse:
     summary = (
         f"{people_note}{week_note}, {len(workouts)} workouts, {total_sets} sets"
     )
+    if truncated:
+        summary += (
+            f" (only the first {settings.MAX_IMPORT_SHEETS} tabs were imported)"
+        )
     return PreviewResponse(
         source_kind="spreadsheet",
         detected_unit=detected_unit,
