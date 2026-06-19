@@ -613,6 +613,194 @@ def gen_garbled_corrections(n: int = 100) -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Category 10: strength & conditioning catalog.
+#
+# "Can a real user add this exercise easily on the first try?" One natural,
+# fully-specified first attempt per movement, spanning the whole S&C taxonomy:
+# barbell, dumbbell, machine/cable, bodyweight/calisthenics, Olympic/power,
+# kettlebell, strongman/carries, plyometrics, and conditioning/cardio.
+#
+# `exercise` lists the minimal distinctive movement tokens any correct name
+# must contain; `forbid` guards against the common wrong mapping. Strength
+# moves expect `register`; cardio expects `register_cardio`. Where a movement
+# is naturally distance/time-based (carries, holds, intervals) the phrasing is
+# left as a user would say it, so the run surfaces any reps/weight nags.
+# ---------------------------------------------------------------------------
+def _reg(exercise, **kw):
+    d = {"action": "register", "exercise": exercise}
+    d.update(kw)
+    return d
+
+
+def _cardio(activity):
+    return {"action": "register_cardio", "activity": activity}
+
+
+SC_CATALOG: list[tuple[str, dict]] = [
+    # --- Barbell: lower ---
+    ("back squat 5x5 at 225", _reg("squat", sets=5, reps=5, weight=225.0, forbid=["leg", "front"])),
+    ("front squat 3x3 at 185", _reg("front squat", sets=3, reps=3, weight=185.0)),
+    ("overhead squat 3x5 at 95", _reg("overhead squat", sets=3, reps=5, weight=95.0)),
+    ("box squat 4x4 at 205", _reg("box squat", sets=4, reps=4, weight=205.0)),
+    ("pause squat 3x5 at 185", _reg("pause squat", sets=3, reps=5, weight=185.0)),
+    ("conventional deadlift 1x5 at 315", _reg("deadlift", reps=5, weight=315.0, forbid=["romanian", "stiff"])),
+    ("sumo deadlift 3x5 at 275", _reg("sumo deadlift", sets=3, reps=5, weight=275.0)),
+    ("romanian deadlift 4x8 at 185", _reg("romanian deadlift", sets=4, reps=8, weight=185.0)),
+    ("stiff leg deadlift 3x10 at 135", _reg("stiff leg deadlift", sets=3, reps=10, weight=135.0)),
+    ("deficit deadlift 3x3 at 295", _reg("deficit deadlift", sets=3, reps=3, weight=295.0)),
+    ("barbell hip thrust 3x12 at 225", _reg("hip thrust", sets=3, reps=12, weight=225.0)),
+    ("good morning 3x10 at 95", _reg("good morning", sets=3, reps=10, weight=95.0)),
+    ("barbell walking lunge 3x10 at 95", _reg("lunge", sets=3, reps=10, weight=95.0)),
+    ("bulgarian split squat 3x8 at 50", _reg("split squat", sets=3, reps=8, weight=50.0)),
+    ("barbell glute bridge 3x12 at 185", _reg("glute bridge", sets=3, reps=12, weight=185.0)),
+    ("zercher squat 3x6 at 155", _reg("zercher squat", sets=3, reps=6, weight=155.0)),
+    # --- Barbell: upper push ---
+    ("bench press 3x10 at 135", _reg("bench press", sets=3, reps=10, weight=135.0)),
+    ("incline bench press 4x8 at 115", _reg("incline bench press", sets=4, reps=8, weight=115.0)),
+    ("decline bench press 3x10 at 135", _reg("decline bench press", sets=3, reps=10, weight=135.0)),
+    ("close grip bench press 3x8 at 115", _reg("close grip bench press", sets=3, reps=8, weight=115.0)),
+    ("standing overhead press 5x5 at 95", _reg("overhead press", sets=5, reps=5, weight=95.0, forbid=["bench", "leg"])),
+    ("push press 5x3 at 135", _reg("push press", sets=5, reps=3, weight=135.0)),
+    ("barbell floor press 3x6 at 155", _reg("floor press", sets=3, reps=6, weight=155.0)),
+    ("landmine press 3x10 at 45", _reg("landmine press", sets=3, reps=10, weight=45.0)),
+    # --- Barbell: upper pull ---
+    ("barbell row 4x8 at 135", _reg("row", sets=4, reps=8, weight=135.0, forbid=["leg"])),
+    ("pendlay row 5x5 at 155", _reg("pendlay row", sets=5, reps=5, weight=155.0)),
+    ("bent over row 4x10 at 115", _reg("bent over row", sets=4, reps=10, weight=115.0)),
+    ("t-bar row 3x10 at 90", _reg("t-bar row", sets=3, reps=10, weight=90.0)),
+    ("barbell shrug 3x15 at 225", _reg("shrug", sets=3, reps=15, weight=225.0)),
+    ("barbell upright row 3x12 at 65", _reg("upright row", sets=3, reps=12, weight=65.0)),
+    ("barbell curl 3x10 at 65", _reg("curl", sets=3, reps=10, weight=65.0)),
+    # --- Dumbbell ---
+    ("dumbbell bench press 3x10 at 60", _reg("bench press", sets=3, reps=10, weight=60.0)),
+    ("incline dumbbell press 3x12 at 50", _reg("incline", sets=3, reps=12, weight=50.0)),
+    ("dumbbell shoulder press 3x10 at 45", _reg("shoulder press", sets=3, reps=10, weight=45.0)),
+    ("arnold press 3x12 at 35", _reg("arnold press", sets=3, reps=12, weight=35.0)),
+    ("dumbbell lateral raise 4x15 at 20", _reg("lateral raise", sets=4, reps=15, weight=20.0)),
+    ("dumbbell front raise 3x12 at 20", _reg("front raise", sets=3, reps=12, weight=20.0)),
+    ("rear delt fly 3x15 at 15", _reg("rear delt", sets=3, reps=15, weight=15.0)),
+    ("one arm dumbbell row 3x10 at 70", _reg("row", sets=3, reps=10, weight=70.0)),
+    ("dumbbell curl 3x12 at 30", _reg("curl", sets=3, reps=12, weight=30.0)),
+    ("hammer curl 3x12 at 35", _reg("hammer curl", sets=3, reps=12, weight=35.0)),
+    ("incline dumbbell curl 3x10 at 25", _reg("curl", sets=3, reps=10, weight=25.0)),
+    ("dumbbell fly 3x12 at 30", _reg("fly", sets=3, reps=12, weight=30.0)),
+    ("dumbbell pullover 3x12 at 45", _reg("pullover", sets=3, reps=12, weight=45.0)),
+    ("goblet squat 3x12 at 50", _reg("goblet squat", sets=3, reps=12, weight=50.0)),
+    ("dumbbell romanian deadlift 3x10 at 50", _reg("romanian deadlift", sets=3, reps=10, weight=50.0)),
+    ("dumbbell shrug 3x15 at 70", _reg("shrug", sets=3, reps=15, weight=70.0)),
+    ("tricep kickback 3x15 at 15", _reg("kickback", sets=3, reps=15, weight=15.0)),
+    ("dumbbell skull crusher 3x12 at 25", _reg("skull crusher", sets=3, reps=12, weight=25.0)),
+    ("dumbbell thruster 3x10 at 35", _reg("thruster", sets=3, reps=10, weight=35.0)),
+    ("dumbbell step up 3x10 at 40", _reg("step up", sets=3, reps=10, weight=40.0)),
+    # --- Machine / cable ---
+    ("lat pulldown 3x12 at 120", _reg("lat pulldown", sets=3, reps=12, weight=120.0)),
+    ("seated cable row 3x12 at 130", _reg("row", sets=3, reps=12, weight=130.0)),
+    ("chest press machine 3x12 at 100", _reg("chest press", sets=3, reps=12, weight=100.0)),
+    ("pec deck 3x15 at 80", _reg("pec deck", sets=3, reps=15, weight=80.0, forbid=["leg"])),
+    ("cable fly 3x15 at 25", _reg("fly", sets=3, reps=15, weight=25.0)),
+    ("tricep pushdown 3x15 at 50", _reg("pushdown", sets=3, reps=15, weight=50.0)),
+    ("rope pushdown 3x15 at 40", _reg("pushdown", sets=3, reps=15, weight=40.0)),
+    ("cable curl 3x12 at 40", _reg("curl", sets=3, reps=12, weight=40.0)),
+    ("face pull 3x20 at 35", _reg("face pull", sets=3, reps=20, weight=35.0)),
+    ("leg press 3x12 at 360", _reg("leg press", sets=3, reps=12, weight=360.0)),
+    ("leg extension 3x15 at 90", _reg("leg extension", sets=3, reps=15, weight=90.0)),
+    ("lying leg curl 3x12 at 80", _reg("leg curl", sets=3, reps=12, weight=80.0)),
+    ("seated leg curl 3x12 at 85", _reg("leg curl", sets=3, reps=12, weight=85.0)),
+    ("hack squat 3x10 at 180", _reg("hack squat", sets=3, reps=10, weight=180.0)),
+    ("seated calf raise 4x15 at 90", _reg("calf raise", sets=4, reps=15, weight=90.0)),
+    ("cable crunch 3x15 at 60", _reg("crunch", sets=3, reps=15, weight=60.0)),
+    ("hip abduction machine 3x20 at 100", _reg("abduction", sets=3, reps=20, weight=100.0)),
+    ("hip adduction machine 3x20 at 100", _reg("adduction", sets=3, reps=20, weight=100.0)),
+    ("smith machine squat 3x10 at 135", _reg("squat", sets=3, reps=10, weight=135.0)),
+    # --- Bodyweight / calisthenics ---
+    ("push ups 3x20", _reg("push up", sets=3, reps=20)),
+    ("pull ups 4x8", _reg("pull up", sets=4, reps=8)),
+    ("chin ups 3x10", _reg("chin up", sets=3, reps=10)),
+    ("dips 3x12", _reg("dip", sets=3, reps=12)),
+    ("pistol squats 3x8", _reg("pistol squat", sets=3, reps=8)),
+    ("bodyweight squats 3x25", _reg("squat", sets=3, reps=25)),
+    ("walking lunges 3x20", _reg("lunge", sets=3, reps=20)),
+    ("hanging leg raises 3x15", _reg("leg raise", sets=3, reps=15)),
+    ("sit ups 3x30", _reg("sit up", sets=3, reps=30)),
+    ("crunches 3x25", _reg("crunch", sets=3, reps=25)),
+    ("burpees 4x15", _reg("burpee", sets=4, reps=15)),
+    ("mountain climbers 3x30", _reg("mountain climber", sets=3, reps=30)),
+    ("nordic curls 3x6", _reg("nordic", sets=3, reps=6)),
+    ("inverted rows 3x12", _reg("inverted row", sets=3, reps=12)),
+    ("pike push ups 3x10", _reg("pike", sets=3, reps=10)),
+    ("diamond push ups 3x15", _reg("diamond", sets=3, reps=15)),
+    ("handstand push ups 3x5", _reg("handstand", sets=3, reps=5)),
+    ("muscle ups 3x3", _reg("muscle up", sets=3, reps=3)),
+    ("glute bridges 3x20", _reg("glute bridge", sets=3, reps=20)),
+    ("plank for 60 seconds", _reg("plank")),
+    ("side plank 3 sets of 45 seconds", _reg("side plank")),
+    ("hollow hold 3 sets of 30 seconds", _reg("hollow")),
+    ("wall sit for 90 seconds", _reg("wall sit")),
+    ("dead hang for 60 seconds", _reg("dead hang")),
+    ("box jumps 4x10", _reg("box jump", sets=4, reps=10)),
+    ("broad jumps 3x8", _reg("broad jump", sets=3, reps=8)),
+    ("jumping jacks 3x50", _reg("jumping jack", sets=3, reps=50)),
+    # --- Olympic / power ---
+    ("power clean 5x3 at 155", _reg("power clean", sets=5, reps=3, weight=155.0)),
+    ("hang clean 4x3 at 135", _reg("hang clean", sets=4, reps=3, weight=135.0)),
+    ("clean and jerk 5x2 at 165", _reg("clean", sets=5, reps=2, weight=165.0)),
+    ("snatch 5x2 at 115", _reg("snatch", sets=5, reps=2, weight=115.0)),
+    ("power snatch 4x2 at 95", _reg("power snatch", sets=4, reps=2, weight=95.0)),
+    ("push jerk 4x3 at 145", _reg("jerk", sets=4, reps=3, weight=145.0)),
+    ("split jerk 4x2 at 155", _reg("split jerk", sets=4, reps=2, weight=155.0)),
+    ("barbell thruster 4x8 at 95", _reg("thruster", sets=4, reps=8, weight=95.0)),
+    ("clean pull 3x3 at 185", _reg("clean pull", sets=3, reps=3, weight=185.0)),
+    # --- Kettlebell ---
+    ("kettlebell swing 4x20 at 53", _reg("swing", sets=4, reps=20, weight=53.0)),
+    ("kettlebell goblet squat 3x12 at 35", _reg("goblet squat", sets=3, reps=12, weight=35.0)),
+    ("kettlebell clean 3x10 at 35", _reg("clean", sets=3, reps=10, weight=35.0)),
+    ("kettlebell snatch 3x8 at 35", _reg("snatch", sets=3, reps=8, weight=35.0)),
+    ("turkish get up 3x5 at 35", _reg("get up", sets=3, reps=5, weight=35.0)),
+    ("kettlebell deadlift 3x12 at 70", _reg("deadlift", sets=3, reps=12, weight=70.0)),
+    ("kettlebell press 3x8 at 35", _reg("press", sets=3, reps=8, weight=35.0)),
+    ("kettlebell windmill 3x8 at 25", _reg("windmill", sets=3, reps=8, weight=25.0)),
+    # --- Strongman / carries / conditioning (often distance/time based) ---
+    ("farmers carry 3 sets of 40 yards at 70 per hand", _reg("farmer", weight=70.0)),
+    ("suitcase carry 3 sets of 30 yards at 60", _reg("suitcase", weight=60.0)),
+    ("sled push 4 sets of 20 yards at 180", _reg("sled push", weight=180.0, forbid=["leg", "lunge"])),
+    ("sled drag 3 sets of 25 yards at 140", _reg("sled", weight=140.0)),
+    ("prowler push 4 sets of 20 meters at 200", _reg("prowler", weight=200.0)),
+    ("yoke walk 3 sets of 15 meters at 400", _reg("yoke", weight=400.0)),
+    ("atlas stone over bar 3x3 at 200", _reg("atlas stone", sets=3, reps=3, weight=200.0)),
+    ("log press 4x3 at 145", _reg("log press", sets=4, reps=3, weight=145.0)),
+    ("tire flips 3x5", _reg("tire flip", sets=3, reps=5)),
+    ("sledgehammer swings 3x20", _reg("sledgehammer", sets=3, reps=20)),
+    ("battle ropes 3 sets of 30 seconds", _reg("battle rope")),
+    ("wall balls 3x20 at 20", _reg("wall ball", sets=3, reps=20, weight=20.0)),
+    ("medicine ball slams 3x15 at 20", _reg("slam", sets=3, reps=15, weight=20.0)),
+    ("devil press 3x10 at 35", _reg("devil press", sets=3, reps=10, weight=35.0)),
+    ("sandbag carry 3 sets of 40 yards at 100", _reg("sandbag", weight=100.0)),
+    ("kettlebell farmers carry 3 sets of 50 feet at 53", _reg("farmer", weight=53.0)),
+    # --- Conditioning / cardio (register_cardio) ---
+    ("ran 3 miles", _cardio("Running")),
+    ("sprinted 10x100 meters", _cardio("Sprints")),
+    ("rowed 2000 meters on the erg", _cardio("Rowing")),
+    ("assault bike for 20 minutes", _cardio("Cycling")),
+    ("echo bike 15 minute intervals", _cardio("Cycling")),
+    ("ski erg 1000 meters", _cardio("Ski")),
+    ("treadmill incline walk for 30 minutes", _cardio("Walking")),
+    ("elliptical for 25 minutes", _cardio("Elliptical")),
+    ("stair climber for 20 minutes", _cardio("Stair")),
+    ("swam 1000 meters", _cardio("Swimming")),
+    ("jumped rope for 10 minutes", _cardio("Jump Rope")),
+    ("30 minute zone 2 run", _cardio("Running")),
+]
+
+
+def gen_sc_catalog() -> list[dict]:
+    out = []
+    for i, (message, expect) in enumerate(SC_CATALOG):
+        out.append({"id": f"sc_catalog-{i+1:03d}", "category": "sc_catalog",
+                    "message": message, "expect": expect})
+    return out
+
+
 def write_dataset(name: str, samples: list[dict]) -> pathlib.Path:
     DATASETS.mkdir(parents=True, exist_ok=True)
     path = DATASETS / name
@@ -632,6 +820,7 @@ DATASET_BUILDERS = {
     "07_cardio.jsonl": lambda: gen_cardio(100),
     "08_tough_failures.jsonl": lambda: gen_tough_failures(100),
     "09_garbled_corrections.jsonl": lambda: gen_garbled_corrections(),
+    "10_sc_catalog.jsonl": lambda: gen_sc_catalog(),
 }
 
 

@@ -118,7 +118,8 @@ _BODYWEIGHT = [
     "flutter kick", "v-up", "v up", "hollow", "l-sit", "l sit", "dead hang",
     "pistol squat", "sissy squat", "air squat", "bodyweight", "body weight", "high knee",
     "bear crawl", "inchworm", "handstand", "skater", "toes to bar",
-    "calf raise",
+    "calf raise", "lunge", "inverted row", "tire flip", "sledgehammer",
+    "nordic", "pike push", "muscle up", "ring row", "ring dip",
 ]
 
 
@@ -127,12 +128,40 @@ def is_bodyweight(name: str) -> bool:
     return any(b in n for b in _BODYWEIGHT)
 
 
+# --- isDistanceBased (AssistantViewModel.isDistanceBased) ---------------------
+# Carries / sleds / drags / yoke walks are load + distance, not reps.
+_DISTANCE_BASED = [
+    "carry", "carries", "farmer", "suitcase", "sled", "drag", "prowler",
+    "yoke", "sandbag",
+]
+
+
+def is_distance_based(name: str) -> bool:
+    n = name.lower()
+    return any(b in n for b in _DISTANCE_BASED)
+
+
+# --- messageStatesSetCount (AssistantViewModel.messageStatesSetCount) ---------
+_SET_COUNT_RE = re.compile(
+    r"\b\d+\s*[x×]\s*\d+"
+    r"|\b\d+\s*sets?\b"
+    r"|\b(?:one|two|three|four|five|six|seven|eight|nine|ten|single|couple|few)\s+sets?\b"
+)
+
+
+def states_set_count(message: str) -> bool:
+    t = message.lower()
+    if "single set" in t or "one set" in t:
+        return True
+    return _SET_COUNT_RE.search(t) is not None
+
+
 # --- firstMissingField (AssistantViewModel.firstMissingField) -----------------
 # NOTE: the real implementation can also ask for a `.variant` based on the user's
 # history. The eval runs against an empty history context, where variant
 # suggestions are always empty, so we omit that branch here.
 
-def first_missing_field(exercise: dict) -> str | None:
+def first_missing_field(exercise: dict, message: str = "") -> str | None:
     sets = exercise.get("sets") or []
     if not sets:
         return None
@@ -142,11 +171,14 @@ def first_missing_field(exercise: dict) -> str | None:
     has_reps = any(s.get("reps") is not None for s in sets)
     equipment = (exercise.get("equipment") or "").lower()
     bodyweight = equipment in ("bodyweight", "body weight") or is_bodyweight(exercise.get("name", ""))
+    name = exercise.get("name", "")
     if not has_weight and not bodyweight:
         return "weight"
-    if not has_reps:
+    # Carries/sleds/yoke are measured by distance, not reps.
+    if not has_reps and not is_distance_based(name):
         return "reps"
-    if len(sets) == 1:
+    # A stated "1x5" / "1 set" is a deliberate single set, not a missing detail.
+    if len(sets) == 1 and not states_set_count(message):
         return "sets"
     return None
 
@@ -208,7 +240,7 @@ def simulate_outcome(message: str, parsed: dict | None, parse_error: bool = Fals
             return {"route": route, "final": "clarify:exercise", "missing_field": "exercise"}
         return {"route": route, "final": "answer", "missing_field": None}
 
-    mf = first_missing_field(exercises[0])
+    mf = first_missing_field(exercises[0], message)
     if mf is None:
         return {"route": route, "final": "register", "missing_field": None}
     return {"route": route, "final": f"clarify:{mf}", "missing_field": mf}

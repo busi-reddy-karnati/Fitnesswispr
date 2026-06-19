@@ -28,6 +28,9 @@ final class AssistantViewModel: ObservableObject {
     /// correction ("no I meant sled push, not lunges") be applied to it by
     /// re-parsing, instead of being misread as a new message or sent to chat.
     private var lastDraft: (id: UUID, session: ParsedSession)?
+    /// The transcript behind the draft currently being clarified — lets us tell
+    /// "1x5" (an explicit single set) from a lone set we should ask to confirm.
+    private var lastTranscript: String = ""
     /// Fields we've already asked about for the workout currently being logged,
     /// so we never ask twice (and "Bodyweight" answers aren't re-prompted).
     private var askedFields: Set<Clarification.Kind> = []
@@ -303,6 +306,7 @@ final class AssistantViewModel: ObservableObject {
         allowQuestionFallback: Bool,
         allowClarify: Bool = false
     ) async {
+        lastTranscript = text
         let context = ParseContext(bodyWeightLbs: bodyWeightLbs)
         let req = ParseRequest(
             transcript: text,
@@ -374,8 +378,11 @@ final class AssistantViewModel: ObservableObject {
             || (ex.equipment?.lowercased() == "body weight")
             || isBodyweight(ex.name)
         if !askedFields.contains(.weight), !hasWeight, !bodyweight { return .weight }
-        if !askedFields.contains(.reps), !hasReps { return .reps }
-        if !askedFields.contains(.sets), ex.sets.count == 1 { return .sets }
+        // Carries/sleds/yoke are measured by distance, not reps — don't nag for reps.
+        if !askedFields.contains(.reps), !hasReps, !isDistanceBased(ex.name) { return .reps }
+        // Only confirm a lone set when the user didn't actually state a count
+        // ("1x5" / "1 set" is a deliberate single set, not a missing detail).
+        if !askedFields.contains(.sets), ex.sets.count == 1, !messageStatesSetCount(lastTranscript) { return .sets }
         return nil
     }
 
@@ -468,9 +475,34 @@ final class AssistantViewModel: ObservableObject {
             "flutter kick", "v-up", "v up", "hollow", "l-sit", "l sit",
             "dead hang", "pistol squat", "sissy squat", "air squat", "bodyweight",
             "body weight", "high knee", "bear crawl", "inchworm", "handstand",
-            "skater", "toes to bar", "calf raise"
+            "skater", "toes to bar", "calf raise", "lunge", "inverted row",
+            "tire flip", "sledgehammer", "nordic", "pike push", "muscle up",
+            "ring row", "ring dip"
         ]
         return bodyweight.contains { n.contains($0) }
+    }
+
+    /// Carries, sleds, drags, and yoke walks are measured by load + distance,
+    /// not reps — so a missing rep count is expected, not something to ask about.
+    private func isDistanceBased(_ name: String) -> Bool {
+        let n = name.lowercased()
+        let kws = ["carry", "carries", "farmer", "suitcase", "sled", "drag",
+                   "prowler", "yoke", "sandbag"]
+        return kws.contains { n.contains($0) }
+    }
+
+    /// Did the user explicitly state how many sets? ("3x10", "1x5", "3 sets",
+    /// "one set", "single set"). If so we trust the parsed set count and don't
+    /// ask them to confirm a lone set.
+    private func messageStatesSetCount(_ text: String) -> Bool {
+        let t = text.lowercased()
+        if t.contains("single set") || t.contains("one set") { return true }
+        let patterns = [
+            #"\b\d+\s*[x×]\s*\d+"#,
+            #"\b\d+\s*sets?\b"#,
+            #"\b(one|two|three|four|five|six|seven|eight|nine|ten|single|couple|few)\s+sets?\b"#
+        ]
+        return patterns.contains { t.range(of: $0, options: .regularExpression) != nil }
     }
 
     /// Weights to suggest for an exercise. Falls back to fuzzy matching so that

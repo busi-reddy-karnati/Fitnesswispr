@@ -128,9 +128,14 @@ def _tokens(name: str) -> set[str]:
     out = set()
     for tok in "".join(c if c.isalpha() else " " for c in name.lower()).split():
         # Crude singularisation for matching only (symmetric on both names), so
-        # "Pull Ups" ({pull, up}) matches "pull up". Threshold >2 so short
-        # plurals like "ups" collapse to "up".
-        if len(tok) > 2 and tok.endswith("s"):
+        # "Pull Ups" ({pull, up}) matches "pull up". Handle sibilant "-es"
+        # plurals ("crunches" -> "crunch") and "-ies" ("flies" -> "fly") before
+        # the bare "-s" rule. Threshold >2 so short plurals like "ups" -> "up".
+        if len(tok) > 3 and tok.endswith("ies"):
+            tok = tok[:-3] + "y"
+        elif len(tok) > 4 and tok.endswith(("ches", "shes", "sses", "xes", "zes")):
+            tok = tok[:-2]
+        elif len(tok) > 2 and tok.endswith("s"):
             tok = tok[:-1]
         if tok and tok not in filler:
             out.add(tok)
