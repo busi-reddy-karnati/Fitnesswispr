@@ -23,7 +23,7 @@ Parsing rules:
 2. A NEW exercise begins whenever a new exercise name appears. Words like "then" / "after that" / "next" are OPTIONAL cues, not required — split on the exercise names themselves. Weight, reps, or sets stated immediately BEFORE or AFTER an exercise name belong to that exercise. Examples:
    - "225 pounds bench press 125 pounds leg press" → two exercises: Bench Press (weight 225) and Leg Press (weight 125).
    - "bench press 225 squat 315" → two exercises.
-2a. Exercise names are often garbled by speech-to-text. Map any unclear, misspelled, or phonetically-off name to the CLOSEST standard gym exercise and output the clean canonical name (e.g. "lakh press" → "Leg Press", "incline dumbell" → "Incline Dumbbell Press", "tricep rope" → "Tricep Pushdown", "lat pull" → "Lat Pulldown"). Never output gibberish as the exercise name; always pick the nearest real exercise.
+2a. Exercise names are often garbled by speech-to-text. Map any unclear, misspelled, or phonetically-off name to the CLOSEST standard gym exercise and output the clean canonical name (e.g. "lakh press" → "Leg Press", "incline dumbell" → "Incline Dumbbell Press", "tricep rope" → "Tricep Pushdown", "lat pull" → "Lat Pulldown", "sludge push and pull" → "Sled Push and Pull"). Use the DISTINCTIVE movement words to guide the match — words like "push", "pull", "sled", "carry", "press", "curl", "row", "squat" are strong signals and must be preserved in the result. If you genuinely cannot confidently identify the intended exercise, KEEP the user's spoken words (title-cased) as the name rather than substituting an unrelated movement — e.g. do NOT turn an unclear "sludge push" into "Lunge" or "Clean and Jerk". Never output meaningless gibberish.
 3. "bodyweight is 180" or "I weigh 180" → set body_weight_lbs on the session object, NOT on the exercise.
 4. Cardio (running, sprints, treadmill, cycling, rowing, HIIT, walking, swimming, etc.): set workout_type "Cardio" for a cardio-only session and fill the session-level cardio fields:
    - cardio_activity: the activity name, capitalized (e.g. "Running", "Sprints", "Cycling", "Rowing", "HIIT", "Treadmill", "Walking", "Swimming").
@@ -43,7 +43,17 @@ Parsing rules:
    - push + pull + legs all mixed → "Full Body"
    - only cardio → "Cardio"
    - anything else → "Other"
-9. On failure to parse: return {{"parse_error": true, "reason": "explanation here"}}
+9. The transcript is OFTEN phrased as a request, command, or question wrapped
+   around the workout — "can you log bench 3x10 at 135", "will you please record
+   squat 5x5", "you logging deadlift 3x5 or what", "log this for me: ...",
+   "hey can you record ...". IGNORE the conversational wrapper and extract the
+   exercises/sets/reps/weights (or cardio) inside it. A polite or question-style
+   phrasing is NOT a reason to refuse — these are workouts to log.
+10. ONLY return {{"parse_error": true, "reason": "explanation here"}} when there
+    is genuinely NO loggable workout content at all (no exercises AND no cardio),
+    e.g. a pure question like "what's my PR on bench?" or "how did I do last
+    week?". If ANY exercise/set/rep/weight or cardio activity is present, extract
+    it — never return parse_error in that case.
 
 Return JSON in exactly this format (no markdown, no fences):
 {{
@@ -127,6 +137,10 @@ Rules:
 - If the history doesn't contain the answer, say so briefly and suggest logging it.
 - Today's date is {today}.
 - Do not invent workouts that aren't in the history.
+- You CANNOT log, save, record, edit, or delete workouts — you only answer
+  questions about the history above. NEVER claim to have logged, saved, recorded,
+  or added anything. If the user is trying to log or correct a workout, tell them
+  to state it as a workout to log (e.g. "sled push and pull 3x1 at 100").
 
 WORKOUT HISTORY:
 {history}
