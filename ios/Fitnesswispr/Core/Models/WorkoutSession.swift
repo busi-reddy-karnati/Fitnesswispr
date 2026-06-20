@@ -1,15 +1,15 @@
 import Foundation
 
-struct ExerciseSet: Codable, Identifiable {
+struct ExerciseSet: Codable, Identifiable, Equatable {
     var id: String { "\(setNumber)" }
-    let setNumber: Int
+    var setNumber: Int
     var reps: Int?
     var weight: Double?
     var weightUnit: String
     var durationSeconds: Int?
 }
 
-struct Exercise: Codable, Identifiable {
+struct Exercise: Codable, Identifiable, Equatable {
     var id: String = UUID().uuidString
     var exerciseId: String?
     var name: String
