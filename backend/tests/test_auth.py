@@ -133,6 +133,26 @@ async def test_delete_account_removes_account_and_data(
 
 
 @pytest.mark.asyncio
+async def test_delete_account_removes_spotter_grants(async_client: AsyncClient) -> None:
+    """Deleting an account also removes the spotter grants it owns."""
+    token, primary = await _sign_in(async_client, "apple-sub-del-grant")
+    grant = await async_client.post(
+        f"/api/v1/profile/{primary}/grants",
+        json={"grantee_uuid": str(uuid.uuid4()), "access": "read"},
+    )
+    assert grant.status_code == 201
+
+    resp = await async_client.delete(
+        "/api/v1/auth/account", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status_code == 204
+
+    grants = await async_client.get(f"/api/v1/profile/{primary}/grants")
+    assert grants.status_code == 200
+    assert grants.json() == []
+
+
+@pytest.mark.asyncio
 async def test_delete_account_lets_user_recreate(async_client: AsyncClient) -> None:
     """After deletion the same Apple ID can sign in again as a brand-new account."""
     token, _ = await _sign_in(async_client, "apple-sub-del-2")
