@@ -63,8 +63,11 @@ Each is 100 samples. Scores are after the routing fixes (`looksLikeWorkout` /
 | 7 | `07_cardio` | "ran 3 miles", "sprints 10x100m" → cardio entry | 86 | **100** |
 | 8 | `08_tough_failures` | TestFlight breakages: bodyweight/holds/voice numbers | 60 | **100** |
 | 9 | `09_garbled_corrections` | ASR-garbled novel names + spoken corrections ("X not Y") | — | **~97** |
+| 10 | `10_sc_catalog` | every common strength & conditioning movement logs first try | 127/142 | **140/142** |
+| 11 | `11_relative_dates` | spoken dates ("yesterday", "last friday", "june 10th") land on the right day | 6/38 | **41/42** |
 
 \* category 4's pre-fix misses were a scoring bug (loose name matching), not the parser.
+Categories 9–11 are hand-authored and smaller than 100 samples (34 / 142 / 42).
 
 ## Category 8: the tough TestFlight cases
 
@@ -111,3 +114,40 @@ like "X not Y" / "no I meant …". Findings:
   the client routes it to chat, which *hallucinates* "Got it! I've logged …"
   while nothing is saved. Fix belongs in `AssistantViewModel` (re-parse
   clarification answers; don't fall a correction back to chat).
+
+## Category 11: relative / spoken dates
+
+Benchmarks the reported bug: **"I did bench yesterday" saves with today's date.**
+
+Each sample logs a fully-specified set with a spoken date phrase and a pinned
+reference "today" (`2026-06-23`, a Tuesday) so the expected `workout_date` is
+reproducible. The score models the date the app would actually persist: the
+parser's `workout_date` if it returns one, **else today** — because the iOS
+client's `ParsedSession` has no date field and the save DatePicker defaults to
+`Date()`. The new `date` failure bucket (in `run_eval.py`) flags these.
+
+**Baseline (before fix): 6/38 (15.8%).** Every exercise/sets/reps/weight was
+extracted perfectly (0 parse/routing failures) — only the **date** was wrong. The
+6 passes were exactly the "today" phrasings, which passed only because the bug
+coincided with today. All past/explicit-date cases were saved as today.
+
+**After fix: 41/42 (97.6%).** The lone miss is a non-deterministic LLM slip on
+one "last sunday" variant (the other passes). All of the user-critical buckets
+are 100%: no date → today (default), "today"/"this morning", "yesterday"/"last
+night", "day before yesterday"/"N days ago", and explicit dates ("june 10th",
+"the 15th").
+
+The fix is two-sided:
+1. **Parser** (`gemini_service.SYSTEM_PROMPT`, rule 11) is now told today's date +
+   weekday and emits a resolved `workout_date`. The client's LOCAL today is passed
+   via `ParseRequest.context.today` so relative dates resolve in the user's
+   timezone (verified across a year boundary).
+2. **Client** decodes `ParsedSession.workoutDate` and pre-fills the confirmation
+   DatePicker with it (still editable); the Siri quick-action saves it directly.
+
+The harness passes each sample's pinned `today` to the parser and caches by
+`(today, message)`. Re-run with `--refresh` after a prompt change:
+
+```bash
+.venv/bin/python -m eval.run_eval --dataset eval/datasets/11_relative_dates.jsonl --refresh
+```

@@ -17,6 +17,7 @@ Run:  python -m eval.generate
 
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 
@@ -801,6 +802,108 @@ def gen_sc_catalog() -> list[dict]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Category 11: relative / spoken dates ("yesterday", "last friday", "june 10th")
+#
+# Reproduces the reported bug: when the user says "I did bench yesterday" the
+# entry is saved with TODAY's date. The parser never extracts a date and the iOS
+# client always stamps the DatePicker (which defaults to Date() == today), so any
+# past-date phrasing is wrong. Each sample fixes a reference "today" so the
+# expected workout_date is reproducible no matter when the eval runs.
+# ---------------------------------------------------------------------------
+
+# Pinned reference "today". 2026-06-23 is a Tuesday.
+REL_TODAY = datetime.date(2026, 6, 23)
+
+
+def _iso(d: datetime.date) -> str:
+    return d.isoformat()
+
+
+def _off(days: int) -> str:
+    return _iso(REL_TODAY - datetime.timedelta(days=days))
+
+
+def _last_weekday(name: str) -> str:
+    """Most recent past date (strictly before REL_TODAY) on the given weekday."""
+    names = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    target = names.index(name)
+    d = REL_TODAY - datetime.timedelta(days=1)
+    while d.weekday() != target:
+        d -= datetime.timedelta(days=1)
+    return _iso(d)
+
+
+# (spoken date phrase, expected workout_date)
+REL_DATE_CASES: list[tuple[str, str]] = [
+    ("yesterday", _off(1)),
+    ("last night", _off(1)),
+    ("today", _off(0)),
+    ("this morning", _off(0)),
+    ("earlier today", _off(0)),
+    ("two days ago", _off(2)),
+    ("the day before yesterday", _off(2)),
+    ("three days ago", _off(3)),
+    ("a couple days ago", _off(2)),
+    ("a week ago", _off(7)),
+    ("last monday", _last_weekday("monday")),
+    ("last wednesday", _last_weekday("wednesday")),
+    ("last thursday", _last_weekday("thursday")),
+    ("last friday", _last_weekday("friday")),
+    ("last saturday", _last_weekday("saturday")),
+    ("last sunday", _last_weekday("sunday")),
+    ("on june 10th", "2026-06-10"),
+    ("on june 1st", "2026-06-01"),
+    ("on the 15th", "2026-06-15"),
+]
+
+# Simple, unambiguous workouts so the only thing that can fail is the DATE.
+REL_WORKOUTS: list[tuple[str, dict]] = [
+    ("bench press 3x10 at 135", _reg("bench press", sets=3, reps=10, weight=135.0)),
+    ("squat 5x5 at 225", _reg("squat", sets=5, reps=5, weight=225.0)),
+    ("deadlift 3x5 at 315", _reg("deadlift", sets=3, reps=5, weight=315.0)),
+    ("overhead press 3x8 at 95", _reg("overhead press", sets=3, reps=8, weight=95.0)),
+]
+
+# Surfaces that read naturally with both relative and explicit date phrases.
+REL_SURFACES = [
+    lambda w, p: f"{w} {p}",
+    lambda w, p: f"log {w} {p}",
+    lambda w, p: f"{p} i did {w}",
+]
+
+
+def gen_relative_dates() -> list[dict]:
+    out: list[dict] = []
+    n = 0
+
+    def add(message: str, base: dict, exp_date: str) -> None:
+        nonlocal n
+        expect = dict(base)
+        expect["workout_date"] = exp_date
+        n += 1
+        out.append({
+            "id": f"relative_dates-{n:03d}",
+            "category": "relative_dates",
+            "today": _iso(REL_TODAY),
+            "message": message,
+            "expect": expect,
+        })
+
+    # No date mentioned at all → must default to today.
+    for wi, (workout, base) in enumerate(REL_WORKOUTS):
+        add(REL_SURFACES[wi % 2](workout, "").strip(), base, _off(0))
+
+    # Spoken date phrases → resolved date.
+    for ci, (phrase, exp_date) in enumerate(REL_DATE_CASES):
+        for k in range(2):  # two phrasing variants per date phrase
+            workout, base = REL_WORKOUTS[(ci + k) % len(REL_WORKOUTS)]
+            surface = REL_SURFACES[(ci + k) % len(REL_SURFACES)]
+            add(surface(workout, phrase), base, exp_date)
+
+    return out
+
+
 def write_dataset(name: str, samples: list[dict]) -> pathlib.Path:
     DATASETS.mkdir(parents=True, exist_ok=True)
     path = DATASETS / name
@@ -821,6 +924,7 @@ DATASET_BUILDERS = {
     "08_tough_failures.jsonl": lambda: gen_tough_failures(100),
     "09_garbled_corrections.jsonl": lambda: gen_garbled_corrections(),
     "10_sc_catalog.jsonl": lambda: gen_sc_catalog(),
+    "11_relative_dates.jsonl": lambda: gen_relative_dates(),
 }
 
 

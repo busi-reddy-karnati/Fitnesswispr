@@ -91,18 +91,23 @@ def save_cache() -> None:
 # --- parsing with retry/backoff (Gemini occasionally 429s/502s) ---------------
 
 async def parse_with_retry(
-    message: str, sem: asyncio.Semaphore, use_cache: bool = True, retries: int = 4
+    message: str, sem: asyncio.Semaphore, use_cache: bool = True, retries: int = 4,
+    today: str | None = None,
 ) -> dict:
-    if use_cache and message in _parse_cache:
-        return _parse_cache[message]
+    # Cache by (today, message): the same message resolves to a different date
+    # depending on the reference "today", so date-aware samples can't share a key
+    # with the plain ones. today=None keeps the original message-only key.
+    key = message if today is None else f"{today}\x00{message}"
+    if use_cache and key in _parse_cache:
+        return _parse_cache[key]
     delay = 1.5
     async with sem:
-        if use_cache and message in _parse_cache:  # filled while we waited
-            return _parse_cache[message]
+        if use_cache and key in _parse_cache:  # filled while we waited
+            return _parse_cache[key]
         result = {"parsed": {"exercises": []}, "parse_error": False, "error": "unreachable"}
         for attempt in range(retries):
             try:
-                parsed = await gemini_service.parse_transcript(message, "lbs", None)
+                parsed = await gemini_service.parse_transcript(message, "lbs", None, today=today)
                 result = {"parsed": parsed, "parse_error": False, "error": None}
                 break
             except Exception as exc:  # HTTPException(422)=parse_error, others=transient
@@ -116,7 +121,7 @@ async def parse_with_retry(
                 await asyncio.sleep(delay)
                 delay *= 2
     async with _cache_lock:
-        _parse_cache[message] = result
+        _parse_cache[key] = result
     return result
 
 
@@ -220,6 +225,26 @@ def _norm_activity(s: str) -> set[str]:
     return {_CARDIO_SYN.get(t, t) for t in _tokens(s)}
 
 
+def check_date(parsed: dict, sample: dict) -> tuple[bool, str | None]:
+    """Did the workout land on the right day?
+
+    The reported bug: "I did bench yesterday" saves TODAY. We model the date the
+    app would actually persist: the iOS client ignores any parser date (its
+    ParsedSession has no date field) and stamps the DatePicker, which defaults to
+    Date() == today. So the effective saved date is the parser's `workout_date`
+    when present, else `today`. Only samples whose `expect` carries a
+    `workout_date` are checked; everything else is unaffected.
+    """
+    want_date = (sample.get("expect") or {}).get("workout_date")
+    if not want_date:
+        return True, None
+    today = sample.get("today")
+    effective = parsed.get("workout_date") or today
+    if effective == want_date:
+        return True, None
+    return False, f"date={effective} want {want_date} (parsed_date={parsed.get('workout_date')})"
+
+
 def check_cardio(parsed: dict, expect: dict) -> tuple[bool, list[str]]:
     act = (parsed.get("cardio_activity") or "").strip()
     if not act:
@@ -236,7 +261,7 @@ async def eval_sample(sample: dict, sem: asyncio.Semaphore, use_cache: bool) -> 
     message = sample["message"]
     expect = sample["expect"]
     want = expect["action"]  # register | clarify | answer | register_cardio
-    res = await parse_with_retry(message, sem, use_cache=use_cache)
+    res = await parse_with_retry(message, sem, use_cache=use_cache, today=sample.get("today"))
     parsed, parse_error = res["parsed"], res["parse_error"]
 
     outcome = simulate_outcome(message, parsed, parse_error)
@@ -264,13 +289,19 @@ async def eval_sample(sample: dict, sem: asyncio.Semaphore, use_cache: bool) -> 
 
     if want == "register":
         content_ok, problems = check_register(parsed, expect)
+        date_ok, date_problem = check_date(parsed, sample)
+        if not date_ok:
+            problems = problems + [date_problem]
         parse_ok = bool(parsed.get("exercises")) and content_ok
-        passed = (final == "register") and content_ok
+        passed = (final == "register") and content_ok and date_ok
         if not passed:
-            if parse_ok and final != "register":
+            if parse_ok and content_ok and date_ok and final != "register":
                 fail_kind, fail_reason = "routing", f"routing ({final})"
             elif not parsed.get("exercises"):
                 fail_kind, fail_reason = "parse", f"empty_parse ({final})"
+            elif content_ok and not date_ok:
+                # Exercise extracted fine; only the date is wrong.
+                fail_kind, fail_reason = "date", date_problem
             else:
                 fail_kind, fail_reason = "parse", f"parse ({'; '.join(problems)})"
 
@@ -351,6 +382,7 @@ async def run(dataset: pathlib.Path, limit: int | None, concurrency: int, use_ca
     routing_fails = sum(1 for r in results if r["fail_kind"] == "routing")
     parse_fails = sum(1 for r in results if r["fail_kind"] == "parse")
     server_500_fails = sum(1 for r in results if r["fail_kind"] == "server_500")
+    date_fails = sum(1 for r in results if r["fail_kind"] == "date")
     other_fails = sum(1 for r in results if r["fail_kind"] == "other")
 
     return {
@@ -361,6 +393,7 @@ async def run(dataset: pathlib.Path, limit: int | None, concurrency: int, use_ca
         "routing_failures": routing_fails,
         "parse_failures": parse_fails,
         "server_500_failures": server_500_fails,
+        "date_failures": date_fails,
         "other_failures": other_fails,
         "elapsed_s": round(elapsed, 1),
         "results": results,
@@ -374,6 +407,7 @@ def print_report(summary: dict) -> None:
     print(f"  routing failures (parser ok, app misrouted): {summary['routing_failures']}")
     print(f"  parse failures   (wrong/empty extraction):   {summary['parse_failures']}")
     print(f"  server 500s      (response validation crash):{summary.get('server_500_failures', 0)}")
+    print(f"  date failures    (wrong workout_date / day):  {summary.get('date_failures', 0)}")
     print(f"  other failures:                              {summary['other_failures']}")
     print(f"  time: {summary['elapsed_s']}s")
     print("=" * 64)

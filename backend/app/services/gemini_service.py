@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from datetime import date, datetime
 
 from fastapi import HTTPException
 from google import genai
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You are a gym workout parser. Your job is to parse a voice transcript of a workout and return ONLY valid JSON with no markdown fences, no extra commentary.
 
 Context: The user's last known body weight is {body_weight_lbs} lbs. If body weight is not mentioned in this transcript, carry forward the last known value. If the user states a new body weight, use that new value.
+
+Context: Today is {today} ({weekday}). Use this to resolve any spoken date (see rule 11).
 
 Parsing rules:
 1. Expand shorthand: "3 sets of 10 at 225" → 3 set objects with set_number 1, 2, 3 each having reps=10, weight=225.
@@ -54,9 +57,26 @@ Parsing rules:
     e.g. a pure question like "what's my PR on bench?" or "how did I do last
     week?". If ANY exercise/set/rep/weight or cardio activity is present, extract
     it — never return parse_error in that case.
+11. DATE — set "workout_date" (YYYY-MM-DD) to the day the workout happened,
+    resolved relative to today ({today}, {weekday}):
+    - No date mentioned, or "just now"/"today"/"this morning"/"this afternoon"/
+      "this evening"/"tonight" → today ({today}). This is the default.
+    - "yesterday" / "last night" → the day before today.
+    - "the day before yesterday" → today minus 2 days. "N days ago" → today minus
+      N days (e.g. "two days ago" → today minus 2). "a week ago"/"last week" →
+      today minus 7 days.
+    - "last <weekday>" / "this past <weekday>" / "on <weekday>" / "<weekday>" →
+      the MOST RECENT date with that weekday strictly before today. Always use the
+      closest past one even if it was only 1-2 days ago (e.g. if today is Tuesday,
+      "last Monday" = yesterday, not the previous week).
+    - An explicit calendar date ("June 10", "6/10", "the 15th") → that date;
+      assume the current year unless one is given, and pick the most recent such
+      date that is NOT in the future.
+    - NEVER return a future date for a logged workout. When unsure, use today.
 
 Return JSON in exactly this format (no markdown, no fences):
 {{
+  "workout_date": "{today}",
   "workout_type": "Push",
   "body_weight_lbs": null,
   "cardio_notes": null,
@@ -80,18 +100,36 @@ Return JSON in exactly this format (no markdown, no fences):
 """
 
 
+def _resolve_today(today: str | None) -> tuple[str, str]:
+    """Return (YYYY-MM-DD, weekday name) for the reference 'today'.
+
+    Prefers the caller-supplied date (the user's LOCAL today, so relative dates
+    like 'yesterday' resolve in their timezone). Falls back to the server date.
+    """
+    today_str = (today or "").strip()
+    try:
+        d = datetime.strptime(today_str, "%Y-%m-%d").date()
+    except ValueError:
+        d = date.today()
+    return d.isoformat(), d.strftime("%A")
+
+
 async def parse_transcript(
     transcript: str,
     unit_preference: str,
     body_weight_lbs: float | None,
+    today: str | None = None,
 ) -> dict:
     """Call Gemini 2.0 Flash to parse a workout transcript into structured JSON."""
     client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
     bw_display = str(body_weight_lbs) if body_weight_lbs is not None else "unknown"
+    today_str, weekday = _resolve_today(today)
     system_prompt = SYSTEM_PROMPT.format(
         body_weight_lbs=bw_display,
         unit_preference=unit_preference,
+        today=today_str,
+        weekday=weekday,
     )
 
     try:
