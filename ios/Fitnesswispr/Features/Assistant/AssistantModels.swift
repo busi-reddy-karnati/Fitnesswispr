@@ -17,6 +17,9 @@ struct ChatMessage: Identifiable {
         /// The assistant needs one more detail before it can log the workout,
         /// and offers quick options the user can tap (or type their own).
         case clarify(Clarification)
+        /// A bulk exercise rename/merge awaiting confirmation, showing every
+        /// entry it will touch.
+        case renamePreview(RenamePreview)
         /// The assistant is thinking.
         case thinking
     }

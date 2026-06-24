@@ -4,7 +4,11 @@ import Charts
 struct ExerciseProgressView: View {
     let name: String
     @ObservedObject var store: ProgressStore
+    @Environment(\.dismiss) private var dismiss
     @State private var selectedDate: Date?
+    @State private var showRename = false
+
+    private var canWrite: Bool { ProfileStore.shared.active.canWrite }
 
     var body: some View {
         Group {
@@ -20,6 +24,22 @@ struct ExerciseProgressView: View {
         }
         .navigationTitle(name)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if canWrite {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showRename = true } label: {
+                        Image(systemName: "pencil")
+                    }
+                    .accessibilityLabel("Rename or merge exercise")
+                }
+            }
+        }
+        .sheet(isPresented: $showRename) {
+            ExerciseRenameSheet(currentName: name, store: store) { _ in
+                // The exercise no longer exists under the old name — pop back.
+                dismiss()
+            }
+        }
     }
 
     private func content(_ s: ExerciseSummary) -> some View {

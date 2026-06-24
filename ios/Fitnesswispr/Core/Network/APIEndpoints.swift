@@ -27,6 +27,9 @@ enum APIEndpoints {
     static var authApple: URL { URL(string: "\(baseURL)/api/v1/auth/apple")! }
     static var authAccount: URL { URL(string: "\(baseURL)/api/v1/auth/account")! }
     static var healthSync: URL { URL(string: "\(baseURL)/api/v1/health/sync")! }
+    static var exercisesRename: URL { URL(string: "\(baseURL)/api/v1/exercises/rename")! }
+    static var exercisesSuggestName: URL { URL(string: "\(baseURL)/api/v1/exercises/suggest-name")! }
+    static var exercisesParseCommand: URL { URL(string: "\(baseURL)/api/v1/exercises/parse-command")! }
 
     static func profile(_ deviceUUID: String) -> URL {
         URL(string: "\(baseURL)/api/v1/profile/\(deviceUUID)")!

@@ -33,6 +33,17 @@ final class HistoryViewModel: ObservableObject {
         }
     }
 
+    /// Reflect an edit immediately in the list (after a save) without a refetch.
+    func applyLocally(_ session: WorkoutSession) {
+        guard let id = session.sessionId,
+              let idx = sessions.firstIndex(where: { $0.sessionId == id }) else { return }
+        sessions[idx] = session
+    }
+
+    func removeLocally(sessionId: String) {
+        sessions.removeAll { $0.sessionId == sessionId }
+    }
+
     var groupedSessions: [(String, [WorkoutSession])] {
         var dict: [String: [WorkoutSession]] = [:]
 

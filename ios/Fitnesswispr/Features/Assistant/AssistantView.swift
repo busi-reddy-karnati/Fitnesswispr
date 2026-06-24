@@ -96,7 +96,9 @@ struct AssistantView: View {
                             message: message,
                             onSave: { parsed, date in vm.saveDraft(parsed, date: date, draftID: message.id) },
                             onDiscard: { vm.discardDraft(message.id) },
-                            onChoose: { option, clarification in vm.chooseClarification(option, clarification) }
+                            onChoose: { option, clarification in vm.chooseClarification(option, clarification) },
+                            onConfirmRename: { preview in vm.confirmRename(preview) },
+                            onCancelRename: { vm.cancelRename(message.id) }
                         )
                         .id(message.id)
                     }
@@ -258,6 +260,8 @@ private struct MessageRow: View {
     let onSave: (ParsedSession, Date) -> Void
     let onDiscard: () -> Void
     let onChoose: (String, Clarification) -> Void
+    let onConfirmRename: (RenamePreview) -> Void
+    let onCancelRename: () -> Void
 
     var body: some View {
         switch message.body {
@@ -280,6 +284,8 @@ private struct MessageRow: View {
             WorkoutDraftCard(parsed: parsed, onSave: onSave, onDiscard: onDiscard)
         case .clarify(let clarification):
             ClarifyCard(clarification: clarification) { onChoose($0, clarification) }
+        case .renamePreview(let preview):
+            RenamePreviewCard(preview: preview, onConfirm: onConfirmRename, onCancel: onCancelRename)
         }
     }
 
@@ -392,11 +398,111 @@ private struct WorkoutDraftCard: View {
     }
 }
 
+// MARK: - Rename preview card
+
+private struct RenamePreviewCard: View {
+    let preview: RenamePreview
+    let onConfirm: (RenamePreview) -> Void
+    let onCancel: () -> Void
+
+    @State private var done = false
+
+    private var shown: [RenameOccurrence] { Array(preview.occurrences.prefix(8)) }
+    private var overflow: Int { max(0, preview.matchedCount - shown.count) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Rename \(preview.matchedCount) entr\(preview.matchedCount == 1 ? "y" : "ies") to “\(preview.toName)”?")
+                .font(.subheadline.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(shown) { occ in
+                    HStack(spacing: 8) {
+                        Text(displayDate(occ.workoutDate))
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .frame(width: 64, alignment: .leading)
+                        Text(occ.oldName)
+                            .font(.caption)
+                            .strikethrough(color: .secondary)
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                        Image(systemName: "arrow.right")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                        Text(preview.toName)
+                            .font(.caption.weight(.medium))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                    }
+                }
+                if overflow > 0 {
+                    Text("+ \(overflow) more")
+                        .font(.caption2)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if !done {
+                HStack(spacing: 10) {
+                    Button(role: .cancel) { done = true; onCancel() } label: {
+                        Text("Cancel").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button { done = true; onConfirm(preview) } label: {
+                        Text("Rename").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(14)
+        .background(Color.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.appAccent.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private func displayDate(_ apiString: String) -> String {
+        Date.from(apiString: apiString)?.formatted(.dateTime.month(.abbreviated).day()) ?? apiString
+    }
+}
+
 // MARK: - Clarification card
 
 private struct ClarifyCard: View {
     let clarification: Clarification
     let onChoose: (String) -> Void
+
+    @State private var custom: String = ""
+    @FocusState private var customFocused: Bool
+
+    private var isNumeric: Bool {
+        switch clarification.kind {
+        case .weight, .reps, .sets: return true
+        case .exercise, .variant: return false
+        }
+    }
+
+    private var customKeyboard: UIKeyboardType {
+        switch clarification.kind {
+        case .weight: return .decimalPad
+        case .reps, .sets: return .numberPad
+        case .exercise, .variant: return .default
+        }
+    }
+
+    private var customPlaceholder: String {
+        switch clarification.kind {
+        case .weight: return "Select one above or enter custom here"
+        case .reps, .sets: return "Select one above or enter custom here"
+        case .exercise, .variant: return "Type it"
+        }
+    }
 
     var body: some View {
         HStack {
@@ -425,6 +531,29 @@ private struct ClarifyCard: View {
                         .buttonStyle(.plain)
                     }
                 }
+
+                // Inline custom entry so the user never has to leave the card to
+                // type an exact value.
+                HStack(spacing: 8) {
+                    TextField(customPlaceholder, text: $custom)
+                        .keyboardType(customKeyboard)
+                        .textInputAutocapitalization(isNumeric ? .never : .words)
+                        .autocorrectionDisabled(isNumeric)
+                        .focused($customFocused)
+                        .submitLabel(.done)
+                        .onSubmit(submitCustom)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Color.primary.opacity(0.06))
+                        .clipShape(Capsule())
+
+                    Button(action: submitCustom) {
+                        Image(systemName: "arrow.up.circle.fill")
+                            .font(.system(size: 26))
+                            .foregroundColor(.appAccent)
+                    }
+                    .disabled(custom.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
             }
             .padding(14)
             .background(Color.cardBackground)
@@ -435,6 +564,14 @@ private struct ClarifyCard: View {
             )
             Spacer(minLength: 20)
         }
+    }
+
+    private func submitCustom() {
+        let value = custom.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { return }
+        customFocused = false
+        custom = ""
+        onChoose(value)
     }
 }
 
