@@ -1,3 +1,5 @@
+require "shellwords"
+
 default_platform(:ios)
 
 APP_IDENTIFIER = "com.fitnesswispr.app"
@@ -589,6 +591,23 @@ platform :ios do
   lane :ci_release do
     key = asc_key
 
+    # Create/download + install the App Store distribution profile using the
+    # API key (Spaceship). This needs no pre-installed profile and no profile
+    # secret to rotate — fastlane manages it on every run. We then archive with
+    # manual signing below; xcodebuild's own cloud signing
+    # (-allowProvisioningUpdates) can't be driven by this key's role, but sigh
+    # (App Store Connect API) can.
+    profile_name = ENV["ASC_PROFILE_NAME"] || "FitnesswisprCIAppStore"
+    get_provisioning_profile(
+      api_key: key,
+      app_identifier: APP_IDENTIFIER,
+      app_store: true,
+      provisioning_name: profile_name,
+      team_id: TEAM_ID,
+      readonly: false
+    )
+    profile_name = lane_context[SharedValues::SIGH_NAME] || profile_name
+
     # Pick the next build number from what's already on TestFlight so CI never
     # collides with manual uploads. Falls back to a timestamp if the lookup
     # fails (e.g. first ever build).
@@ -613,8 +632,19 @@ platform :ios do
       derived_data_path: "/tmp/fw_dd_release",
       clean: true,
       export_method: "app-store",
-      # Override the build number at build time so we don't have to commit it.
-      xcargs: "-allowProvisioningUpdates CURRENT_PROJECT_VERSION=#{next_build}"
+      # The project defaults to automatic signing for local dev, but CI has no
+      # signed-in Apple account, so force manual signing for the archive using
+      # the profile fetched above. The build number is overridden here so it
+      # never has to be committed.
+      xcargs: %(CURRENT_PROJECT_VERSION=#{next_build} CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=#{TEAM_ID} PROVISIONING_PROFILE_SPECIFIER=#{profile_name.shellescape} CODE_SIGN_IDENTITY="Apple Distribution"),
+      export_options: {
+        method: "app-store",
+        signingStyle: "manual",
+        teamID: TEAM_ID,
+        provisioningProfiles: {
+          APP_IDENTIFIER => profile_name
+        }
+      }
     )
 
     upload_to_testflight(
