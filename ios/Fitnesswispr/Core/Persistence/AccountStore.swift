@@ -81,6 +81,16 @@ final class AccountStore: ObservableObject {
         ProfileStore.shared.switchToSelf()
     }
 
+    /// Permanently delete the signed-in account and all of its server-side data,
+    /// then sign out locally. Irreversible. Throws if not signed in or the
+    /// request fails, leaving the local session intact so the user can retry.
+    @MainActor
+    func deleteAccount() async throws {
+        guard isSignedIn else { return }
+        try await APIClient.shared.delete(APIEndpoints.authAccount)
+        signOut()
+    }
+
     // MARK: - Keychain
 
     private static func load(service: String, key: String) -> Account? {

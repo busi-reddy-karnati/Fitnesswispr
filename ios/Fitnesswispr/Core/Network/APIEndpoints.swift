@@ -25,6 +25,7 @@ enum APIEndpoints {
     static var importPreview: URL { URL(string: "\(baseURL)/api/v1/import/preview")! }
     static var importCommit: URL { URL(string: "\(baseURL)/api/v1/import/commit")! }
     static var authApple: URL { URL(string: "\(baseURL)/api/v1/auth/apple")! }
+    static var authAccount: URL { URL(string: "\(baseURL)/api/v1/auth/account")! }
     static var healthSync: URL { URL(string: "\(baseURL)/api/v1/health/sync")! }
 
     static func profile(_ deviceUUID: String) -> URL {

@@ -10,6 +10,9 @@ struct SettingsView: View {
     @State private var syncing = false
     @State private var photoItem: PhotosPickerItem?
     @State private var authError: String?
+    @State private var showDeleteConfirm = false
+    @State private var isDeleting = false
+    @State private var deleteError: String?
 
     var body: some View {
         Form {
@@ -146,6 +149,16 @@ struct SettingsView: View {
                 } label: {
                     Text("Sign out")
                 }
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    HStack {
+                        Text("Delete Account")
+                        Spacer()
+                        if isDeleting { ProgressView() }
+                    }
+                }
+                .disabled(isDeleting)
             } else {
                 SignInWithAppleButton(.signIn) { request in
                     request.requestedScopes = [.fullName, .email]
@@ -160,13 +173,40 @@ struct SettingsView: View {
             Text("Account")
         } footer: {
             Text(account.isSignedIn
-                 ? "Your workouts are backed up to your account and sync across your devices."
-                 : "Sign in to back up your workouts and access them on any device. Optional — your data stays on this device until you do.")
+                 ? "Your workouts are backed up to your account and sync across your devices. Deleting your account permanently removes your account and all of its data from our servers."
+                 : "Sign in to back up your workouts and access them on any device. Optional, your data stays on this device until you do.")
         }
         .alert("Sign-in failed", isPresented: .constant(authError != nil)) {
             Button("OK") { authError = nil }
         } message: {
             Text(authError ?? "")
+        }
+        .confirmationDialog(
+            "Delete your account?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Delete Account", role: .destructive) { deleteAccount() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes your account and all of your workout data from our servers. This cannot be undone.")
+        }
+        .alert("Couldn't delete account", isPresented: .constant(deleteError != nil)) {
+            Button("OK") { deleteError = nil }
+        } message: {
+            Text(deleteError ?? "")
+        }
+    }
+
+    private func deleteAccount() {
+        isDeleting = true
+        Task {
+            do {
+                try await account.deleteAccount()
+            } catch {
+                deleteError = error.localizedDescription
+            }
+            isDeleting = false
         }
     }
 
