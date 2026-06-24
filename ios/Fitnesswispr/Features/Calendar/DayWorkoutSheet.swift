@@ -2,13 +2,32 @@ import SwiftUI
 
 struct DayWorkoutSheet: View {
     let dateStr: String
-    let sessions: [WorkoutSession]
     var appleWorkouts: [AppleFitnessWorkout] = []
     var onChanged: (() -> Void)? = nil
     /// Optimistic callbacks — preferred over `onChanged` when the caller can
     /// update its cache without a full refetch.
     var onUpdated: ((WorkoutSession) -> Void)? = nil
     var onDeleted: ((String) -> Void)? = nil
+
+    /// Held locally so edits made in the pushed detail view (renames, deletes)
+    /// reflect in these rows the moment you pop back — not only on reopen.
+    @State private var sessions: [WorkoutSession]
+
+    init(
+        dateStr: String,
+        sessions: [WorkoutSession],
+        appleWorkouts: [AppleFitnessWorkout] = [],
+        onChanged: (() -> Void)? = nil,
+        onUpdated: ((WorkoutSession) -> Void)? = nil,
+        onDeleted: ((String) -> Void)? = nil
+    ) {
+        self.dateStr = dateStr
+        _sessions = State(initialValue: sessions)
+        self.appleWorkouts = appleWorkouts
+        self.onChanged = onChanged
+        self.onUpdated = onUpdated
+        self.onDeleted = onDeleted
+    }
 
     private var isEmpty: Bool { sessions.isEmpty && appleWorkouts.isEmpty }
 
@@ -37,8 +56,16 @@ struct DayWorkoutSheet: View {
                                         SessionDetailView(
                                             session: session,
                                             onChanged: onChanged,
-                                            onUpdated: onUpdated,
-                                            onDeleted: onDeleted
+                                            onUpdated: { updated in
+                                                if let idx = sessions.firstIndex(where: { $0.sessionId == updated.sessionId }) {
+                                                    sessions[idx] = updated
+                                                }
+                                                onUpdated?(updated)
+                                            },
+                                            onDeleted: { id in
+                                                sessions.removeAll { $0.sessionId == id }
+                                                onDeleted?(id)
+                                            }
                                         )
                                     }
                                 } label: {

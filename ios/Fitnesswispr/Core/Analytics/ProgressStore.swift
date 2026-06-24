@@ -179,6 +179,62 @@ final class ProgressStore: ObservableObject {
         sessions.removeAll { $0.sessionId == sessionId }
     }
 
+    /// Distinct exercise names the user has logged, most-recent spelling first.
+    /// Powers the merge picker.
+    func distinctExerciseNames() -> [String] {
+        var dated: [(Date, String)] = []
+        for s in sessions {
+            guard let d = Date.from(apiString: s.workoutDate) else { continue }
+            for ex in s.exercises {
+                let n = ex.name.trimmingCharacters(in: .whitespaces)
+                if !n.isEmpty { dated.append((d, n)) }
+            }
+        }
+        dated.sort { $0.0 > $1.0 }
+        var seen = Set<String>()
+        var result: [String] = []
+        for (_, n) in dated where seen.insert(n.lowercased()).inserted { result.append(n) }
+        return result
+    }
+
+    /// Best-effort muscle region for each logged exercise name (keyed by a
+    /// lowercased, trimmed name), taken from its most recent occurrence. Powers
+    /// the merge picker's "same region first" ranking.
+    func exerciseRegions() -> [String: MuscleRegion] {
+        var latest: [String: Date] = [:]
+        var regions: [String: MuscleRegion] = [:]
+        for s in sessions {
+            guard let d = Date.from(apiString: s.workoutDate) else { continue }
+            for ex in s.exercises {
+                let key = ex.name.lowercased().trimmingCharacters(in: .whitespaces)
+                guard !key.isEmpty else { continue }
+                if let prev = latest[key], prev >= d { continue }
+                if let r = MuscleRegion.classify(muscleGroup: ex.muscleGroup, exerciseName: ex.name) {
+                    latest[key] = d
+                    regions[key] = r
+                }
+            }
+        }
+        return regions
+    }
+
+    /// Optimistically apply a bulk rename to the local cache so the UI updates
+    /// instantly. `match` mirrors the backend: "canonical" also folds plural/
+    /// synonym variants, "exact" matches the literal (trimmed) name.
+    func applyRenameLocally(fromNames: [String], toName: String, match: String) {
+        let exactKeys = Set(fromNames.map { $0.trimmingCharacters(in: .whitespaces).lowercased() })
+        let canonicalKeys = Set(fromNames.map { ExerciseName.canonicalKey($0) })
+        for sIdx in sessions.indices {
+            for eIdx in sessions[sIdx].exercises.indices {
+                let name = sessions[sIdx].exercises[eIdx].name
+                let hit = match == "exact"
+                    ? exactKeys.contains(name.trimmingCharacters(in: .whitespaces).lowercased())
+                    : canonicalKeys.contains(ExerciseName.canonicalKey(name))
+                if hit { sessions[sIdx].exercises[eIdx].name = toName }
+            }
+        }
+    }
+
     // MARK: - Consistency
 
     /// apiDateString -> total sets logged that day (heatmap intensity).

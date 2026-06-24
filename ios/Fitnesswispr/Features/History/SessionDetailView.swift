@@ -195,6 +195,9 @@ struct SessionDetailView: View {
                 session = updated
                 onUpdated?(updated)
                 onChanged?()
+                // Broadcast so other screens (home body map, exercise progress)
+                // pick up renamed/edited exercises without a manual refresh.
+                NotificationCenter.default.post(name: .workoutLogged, object: updated)
             } catch {
                 session = previous
                 onUpdated?(previous)

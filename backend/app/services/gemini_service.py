@@ -304,6 +304,98 @@ async def extract_photo(image_bytes: bytes, mime: str) -> dict:
         raise HTTPException(status_code=502, detail="Could not read the photo") from exc
 
 
+SUGGEST_NAME_PROMPT = """You are a gym exercise naming expert. You are given \
+several spellings/variants that all refer to the SAME exercise. Return ONLY the \
+single cleanest, most standard gym name that represents them, in Title Case, with \
+no commentary, no quotes, and no trailing punctuation.
+
+Rules:
+- Prefer the conventional full name (e.g. "Bench Press", "Lat Pulldown", \
+"Romanian Deadlift").
+- Keep meaningful qualifiers the variants agree on (e.g. "Incline", "Wide-Grip", \
+"Bent Over", "Chest Supported").
+- Fix obvious typos and singular/plural inconsistencies.
+- Output just the name on one line."""
+
+
+async def suggest_exercise_name(names: list[str]) -> str:
+    """Pick the single cleanest standard name for a set of variant spellings."""
+    fallback = max(names, key=len) if names else ""
+    if not settings.GEMINI_API_KEY:
+        return fallback
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    prompt = "Variants:\n" + "\n".join(f"- {n}" for n in names)
+    try:
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=SUGGEST_NAME_PROMPT,
+                temperature=0.1,
+                thinking_config=_NO_THINKING,
+                max_output_tokens=settings.ASSISTANT_MAX_OUTPUT_TOKENS,
+            ),
+        )
+    except Exception as exc:
+        logger.error("Gemini API error (suggest name): %s", exc)
+        return fallback
+    cleaned = (response.text or "").strip().strip('"').splitlines()
+    name = cleaned[0].strip() if cleaned else ""
+    return name or fallback
+
+
+RENAME_COMMAND_PROMPT = """You interpret chat commands that rename or merge \
+exercises in a workout log. Decide whether the user's message is asking to \
+rename/merge one or more exercises to a single target name.
+
+You are given the user's KNOWN exercise names. Map the source(s) the user refers \
+to onto the closest KNOWN names (you may include several variants that clearly \
+match, e.g. both "Lat Pulldown" and "Lat Pulldowns"). The target name is what \
+they want everything renamed TO; clean it up to a standard Title Case gym name.
+
+Return ONLY JSON (no markdown):
+{{"is_rename": true, "from_names": ["..."], "to_name": "..."}}
+
+If the message is NOT a rename/merge request (it's a normal question or a workout \
+to log), return {{"is_rename": false, "from_names": [], "to_name": null}}.
+
+KNOWN EXERCISE NAMES:
+{known}
+"""
+
+
+async def parse_rename_command(message: str, known_names: list[str]) -> dict:
+    """Extract a rename/merge intent (from_names + to_name) from a chat message."""
+    empty = {"is_rename": False, "from_names": [], "to_name": None}
+    if not settings.GEMINI_API_KEY:
+        return empty
+    client = genai.Client(api_key=settings.GEMINI_API_KEY)
+    known = "\n".join(f"- {n}" for n in known_names) or "(none logged yet)"
+    system_prompt = RENAME_COMMAND_PROMPT.format(known=known)
+    try:
+        response = await asyncio.to_thread(
+            client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=message,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                temperature=0.1,
+                thinking_config=_NO_THINKING,
+                max_output_tokens=settings.ASSISTANT_MAX_OUTPUT_TOKENS,
+            ),
+        )
+    except Exception as exc:
+        logger.error("Gemini API error (rename command): %s", exc)
+        return empty
+    try:
+        return _strip_json(response.text)
+    except json.JSONDecodeError:
+        logger.error("Bad rename-command JSON: %s", (response.text or "")[:300])
+        return empty
+
+
 async def answer_question(
     question: str,
     history: str,

@@ -127,6 +127,14 @@ Print the public TestFlight link and review status
 
 Build and upload to TestFlight
 
+### ios ci_release
+
+```sh
+[bundle exec] fastlane ios ci_release
+```
+
+CI: build + upload to TestFlight with an auto-incremented build number
+
 ----
 
 This README.md is auto-generated and will be re-generated every time [_fastlane_](https://fastlane.tools) is run.

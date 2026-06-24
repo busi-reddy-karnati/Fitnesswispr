@@ -147,6 +147,19 @@ final class AssistantViewModel: ObservableObject {
         }
         askedFields = []   // a fresh workout — clear what we've asked about
 
+        // A rename/merge command ("rename all my bench pres to bench press",
+        // "merge lat pulldown and lat pulldowns") — resolve it to the affected
+        // entries and show a confirm preview before changing anything.
+        if looksLikeRename(text) {
+            let thinkingID = appendThinking()
+            isBusy = true
+            Task {
+                await handleRenameCommand(text, replacing: thinkingID)
+                isBusy = false
+            }
+            return
+        }
+
         let thinkingID = appendThinking()
         isBusy = true
         Task {
@@ -418,11 +431,16 @@ final class AssistantViewModel: ObservableObject {
             opts.append("Bodyweight")
             return Array(opts)
         case .reps:
-            let freq = frequentReps.filter { $0 > 0 }.prefix(3).map(String.init)
-            return freq.isEmpty ? ["8", "10", "12"] : Array(freq)
+            let freq = frequentReps.filter { $0 > 0 }.map(String.init)
+            return freq.isEmpty ? ["8", "10", "12"] : Array(freq.prefix(3))
         case .sets:
-            let freq = frequentSetCounts.filter { $0 > 1 }.prefix(3).map(String.init)
-            return freq.isEmpty ? ["3", "4", "5"] : Array(freq)
+            // Always offer "1" (a single set), then the user's most-frequent
+            // set counts.
+            var opts = ["1"]
+            let freq = frequentSetCounts.filter { $0 > 1 }.map(String.init)
+            let base = freq.isEmpty ? ["3", "4", "5"] : Array(freq.prefix(3))
+            for s in base where !opts.contains(s) { opts.append(s) }
+            return opts
         }
     }
 
@@ -620,6 +638,104 @@ final class AssistantViewModel: ObservableObject {
             "mile", "km", "marathon", "elliptical"
         ]
         return signals.contains { t.contains($0) }
+    }
+
+    // MARK: - Rename / merge
+
+    /// Does this read like a command to rename or merge exercises (rather than a
+    /// workout to log or a question)? Kept deliberately narrow so normal logs
+    /// ("bench 3x10") never trip it.
+    private func looksLikeRename(_ text: String) -> Bool {
+        let t = " \(text.lowercased()) "
+        if t.contains(" rename ") || t.contains(" re-name ") { return true }
+        if (t.contains(" merge ") || t.contains(" combine ")) && !hasNumber(t) { return true }
+        // "call all my X (Y)", "name all my X to Y", "change all my X to Y"
+        let phrasePairs: [(String, String)] = [
+            ("call all", " to "), ("call all", " as "),
+            ("name all", " to "), ("name all", " as "),
+            ("change all", " to "), ("rename all", " to "),
+        ]
+        return phrasePairs.contains { t.contains($0.0) && t.contains($0.1) }
+    }
+
+    /// Resolve a rename command to the entries it would change, then show a
+    /// confirm preview. Falls back to chat when it isn't really a rename.
+    private func handleRenameCommand(_ text: String, replacing id: UUID) async {
+        do {
+            let parseReq = ParseCommandRequest(
+                deviceUuid: targetUUID,
+                message: text,
+                knownNames: Array(allExerciseNames.prefix(200))
+            )
+            let parsed: ParseCommandResponse = try await APIClient.shared.post(
+                APIEndpoints.exercisesParseCommand, body: parseReq
+            )
+            guard parsed.isRename, let to = parsed.toName?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !to.isEmpty, !parsed.fromNames.isEmpty else {
+                await answer(text, replacing: id)
+                return
+            }
+
+            let previewReq = RenameExerciseRequest(
+                deviceUuid: targetUUID,
+                fromNames: parsed.fromNames,
+                toName: to,
+                match: "canonical",
+                dryRun: true
+            )
+            let preview: RenameExerciseResponse = try await APIClient.shared.post(
+                APIEndpoints.exercisesRename, body: previewReq
+            )
+
+            guard preview.matchedCount > 0 else {
+                let names = parsed.fromNames.joined(separator: "”, “")
+                replace(id, with: .text("I couldn't find any logged entries matching “\(names)”. Nothing was changed."))
+                return
+            }
+
+            let p = RenamePreview(
+                messageID: id,
+                fromNames: parsed.fromNames,
+                toName: to,
+                occurrences: preview.occurrences,
+                matchedCount: preview.matchedCount,
+                match: "canonical"
+            )
+            replace(id, with: .renamePreview(p))
+        } catch {
+            replace(id, with: .text("I couldn't work out that rename: \(error.localizedDescription)"))
+        }
+    }
+
+    /// Apply a previewed rename, then refresh history everywhere.
+    func confirmRename(_ preview: RenamePreview) {
+        replace(preview.messageID, with: .thinking)
+        isBusy = true
+        Task {
+            do {
+                let req = RenameExerciseRequest(
+                    deviceUuid: targetUUID,
+                    fromNames: preview.fromNames,
+                    toName: preview.toName,
+                    match: preview.match,
+                    dryRun: false
+                )
+                let resp: RenameExerciseResponse = try await APIClient.shared.post(
+                    APIEndpoints.exercisesRename, body: req
+                )
+                let n = resp.matchedCount
+                replace(preview.messageID, with: .saved("Renamed \(n) entr\(n == 1 ? "y" : "ies") to \(resp.toName) ✓"))
+                NotificationCenter.default.post(name: .workoutLogged, object: nil)
+                await loadHistory()
+            } catch {
+                replace(preview.messageID, with: .text("Couldn't apply the rename: \(error.localizedDescription)"))
+            }
+            isBusy = false
+        }
+    }
+
+    func cancelRename(_ messageID: UUID) {
+        replace(messageID, with: .text("Okay — left everything as it was."))
     }
 
     func saveDraft(_ parsed: ParsedSession, date: Date, draftID: UUID) {

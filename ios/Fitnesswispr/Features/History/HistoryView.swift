@@ -16,7 +16,11 @@ struct HistoryView: View {
                             Section(month) {
                                 ForEach(sessions) { session in
                                     NavigationLink {
-                                        SessionDetailView(session: session)
+                                        SessionDetailView(
+                                            session: session,
+                                            onUpdated: { vm.applyLocally($0) },
+                                            onDeleted: { vm.removeLocally(sessionId: $0) }
+                                        )
                                     } label: {
                                         SessionRowView(session: session)
                                     }
