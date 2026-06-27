@@ -85,7 +85,7 @@ The API is served under `/api/v1` (e.g. `GET /api/v1/health`).
 
 ```
 GET    /api/v1/health
-POST   /api/v1/parse                      transcript -> structured JSON (no DB write)
+POST   /api/v1/parse                      transcript -> structured JSON (no DB write); exercises missing a name are dropped
 POST   /api/v1/sessions                   save a workout
 GET    /api/v1/sessions?device_uuid=&start_date=&end_date=&limit=&offset=
 GET    /api/v1/sessions/{id}

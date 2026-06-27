@@ -20,6 +20,8 @@ async def parse_workout(request: ParseRequest) -> ParseResponse:
     """
     Parse a voice transcript using Gemini without saving to DB.
     Returns a WorkoutSessionSchema-shaped response with session_id=null.
+    Exercises missing a non-empty ``name`` are silently dropped and logged
+    at WARNING level; they are never forwarded to the caller.
     """
     body_weight_lbs: float | None = request.context.get("body_weight_lbs")
     # The client passes its LOCAL today (YYYY-MM-DD) so relative dates like

@@ -4,6 +4,8 @@ import AVFoundation
 
 /// Lightweight on-device speech-to-text used by the assistant composer.
 /// Publishes a live `transcript` while recording.
+/// `start()` is a no-op if the recognizer is nil or reports `isAvailable == false`
+/// (e.g. device offline, locale unsupported, or permission not granted).
 @MainActor
 final class SpeechRecognizer: ObservableObject {
     @Published var transcript: String = ""
