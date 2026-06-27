@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 
 from app.ratelimit import enforce_llm_budget
@@ -5,6 +7,7 @@ from app.schemas.requests import ParseRequest
 from app.schemas.responses import ParseResponse
 from app.services import gemini_service
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -30,10 +33,19 @@ async def parse_workout(request: ParseRequest) -> ParseResponse:
         today=today,
     )
 
-    # Normalise exercises: rename "sets" key inside each exercise if needed
+    # Normalise exercises: rename "sets" key inside each exercise if needed,
+    # and skip any malformed entries that are missing a non-empty name.
     exercises = parsed.get("exercises", [])
     normalised_exercises = []
     for idx, ex in enumerate(exercises):
+        name = (ex.get("name") or "").strip()
+        if not name:
+            logger.warning(
+                "Skipping malformed exercise at index %d: missing 'name' field. Entry: %s",
+                idx,
+                ex,
+            )
+            continue
         ex_copy = dict(ex)
         ex_copy.setdefault("exercise_order", idx)
         normalised_exercises.append(ex_copy)

@@ -52,7 +52,9 @@ struct CalendarView: View {
 
     private var monthTitle: String {
         let components = DateComponents(year: vm.currentYear, month: vm.currentMonth)
-        let date = calendar.date(from: components)!
+        guard let date = calendar.date(from: components) else {
+            return "\(vm.currentYear)-\(vm.currentMonth)"
+        }
         let f = DateFormatter()
         f.dateFormat = "MMMM yyyy"
         return f.string(from: date)
@@ -101,9 +103,10 @@ struct CalendarView: View {
 
     private func daysInMonth() -> [Int?] {
         let components = DateComponents(year: vm.currentYear, month: vm.currentMonth, day: 1)
-        let firstDay = calendar.date(from: components)!
+        guard let firstDay = calendar.date(from: components) else { return [] }
         let weekday = calendar.component(.weekday, from: firstDay) - 1
-        let range = calendar.range(of: .day, in: .month, for: firstDay)!
+        guard let range = calendar.range(of: .day, in: .month, for: firstDay),
+              range.count > 0 else { return [] }
 
         var result: [Int?] = Array(repeating: nil, count: weekday)
         result += (1...range.count).map { Optional($0) }

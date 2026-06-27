@@ -25,6 +25,7 @@ final class SpeechRecognizer: ObservableObject {
 
     func start() {
         guard !isRecording else { return }
+        guard let recognizer, recognizer.isAvailable else { return }
         transcript = ""
         isRecording = true
 
@@ -36,7 +37,7 @@ final class SpeechRecognizer: ObservableObject {
         request.shouldReportPartialResults = true
         self.request = request
 
-        task = recognizer?.recognitionTask(with: request) { [weak self] result, _ in
+        task = recognizer.recognitionTask(with: request) { [weak self] result, _ in
             guard let result else { return }
             Task { @MainActor [weak self] in
                 self?.transcript = result.bestTranscription.formattedString

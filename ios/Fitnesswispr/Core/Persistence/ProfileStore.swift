@@ -1,5 +1,8 @@
+import OSLog
 import SwiftUI
 import UIKit
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Fitnesswispr", category: "ProfileStore")
 
 /// Central store for the user's own profile (name, body metrics, avatar) and
 /// any linked profiles shared with them ("Spotter" sharing). Persisted locally.
@@ -349,15 +352,28 @@ final class ProfileStore: ObservableObject {
     }
 
     private static func loadAvatar() -> Data? {
-        try? Data(contentsOf: avatarURL())
+        do {
+            return try Data(contentsOf: avatarURL())
+        } catch {
+            logger.error("Failed to load avatar from disk: \(error)")
+            return nil
+        }
     }
 
     private static func saveAvatar(_ data: Data?) {
         let url = avatarURL()
         if let data {
-            try? data.write(to: url)
+            do {
+                try data.write(to: url)
+            } catch {
+                logger.error("Failed to save avatar to disk: \(error)")
+            }
         } else {
-            try? FileManager.default.removeItem(at: url)
+            do {
+                try FileManager.default.removeItem(at: url)
+            } catch {
+                logger.error("Failed to remove avatar from disk: \(error)")
+            }
         }
     }
 

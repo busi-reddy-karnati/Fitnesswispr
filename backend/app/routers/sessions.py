@@ -4,6 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -94,20 +95,20 @@ async def create_session(
             )
             db.add(ex_set)
 
-    # UPSERT device_context if body_weight_lbs is provided
+    # UPSERT device_context if body_weight_lbs is provided (atomic, no read-then-write race)
     if body.body_weight_lbs is not None:
-        result = await db.execute(
-            select(DeviceContext).where(DeviceContext.device_uuid == str(device_uuid))
-        )
-        ctx = result.scalars().first()
-        if ctx is None:
-            ctx = DeviceContext(
+        upsert_stmt = (
+            pg_insert(DeviceContext)
+            .values(
                 device_uuid=str(device_uuid),
                 last_body_weight_lbs=body.body_weight_lbs,
             )
-            db.add(ctx)
-        else:
-            ctx.last_body_weight_lbs = body.body_weight_lbs
+            .on_conflict_do_update(
+                index_elements=[DeviceContext.device_uuid],
+                set_={"last_body_weight_lbs": body.body_weight_lbs},
+            )
+        )
+        await db.execute(upsert_stmt)
 
     await db.flush()
 

@@ -144,7 +144,7 @@ async def parse_transcript(
             ),
         )
     except Exception as exc:
-        logger.error("Gemini API error: %s", exc)
+        logger.exception("Gemini API error during parse_transcript: %s", exc)
         raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
 
     raw = response.text
@@ -266,7 +266,7 @@ async def extract_spreadsheet_sheet(grid_text: str) -> dict:
             ),
         )
     except Exception as exc:
-        logger.error("Gemini API error (import sheet): %s", exc)
+        logger.exception("Gemini API error during extract_spreadsheet_sheet: %s", exc)
         raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
     try:
         return _strip_json(response.text)
@@ -295,7 +295,7 @@ async def extract_photo(image_bytes: bytes, mime: str) -> dict:
             ),
         )
     except Exception as exc:
-        logger.error("Gemini API error (import photo): %s", exc)
+        logger.exception("Gemini API error during extract_photo: %s", exc)
         raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
     try:
         return _strip_json(response.text)
@@ -343,7 +343,7 @@ async def answer_question(
             ),
         )
     except Exception as exc:
-        logger.error("Gemini API error (assistant): %s", exc)
+        logger.exception("Gemini API error during answer_question: %s", exc)
         raise HTTPException(status_code=502, detail=f"Gemini API error: {exc}") from exc
 
     return (response.text or "").strip()

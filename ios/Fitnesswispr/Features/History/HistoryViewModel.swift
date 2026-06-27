@@ -42,7 +42,7 @@ final class HistoryViewModel: ObservableObject {
         }
 
         let sorted = dict.keys.sorted(by: >)
-        return sorted.map { key in (key, dict[key]!) }
+        return sorted.map { key in (key, dict[key] ?? []) }
     }
 
     private func monthKey(from dateStr: String) -> String {
