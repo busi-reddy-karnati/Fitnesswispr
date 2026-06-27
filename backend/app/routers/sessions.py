@@ -3,7 +3,7 @@ from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -105,7 +105,10 @@ async def create_session(
             )
             .on_conflict_do_update(
                 index_elements=[DeviceContext.device_uuid],
-                set_={"last_body_weight_lbs": body.body_weight_lbs},
+                set_={
+                    "last_body_weight_lbs": body.body_weight_lbs,
+                    "last_updated": func.now(),
+                },
             )
         )
         await db.execute(upsert_stmt)
