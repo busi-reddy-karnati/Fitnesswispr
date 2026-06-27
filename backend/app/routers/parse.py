@@ -1,11 +1,10 @@
 import logging
 
-from fastapi import APIRouter, Depends
-
 from app.ratelimit import enforce_llm_budget
 from app.schemas.requests import ParseRequest
 from app.schemas.responses import ParseResponse
 from app.services import gemini_service
+from fastapi import APIRouter, Depends
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

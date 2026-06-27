@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import date, datetime
 
+from app.config import settings
 from fastapi import HTTPException
 from google import genai
 from google.genai import types
@@ -10,8 +11,6 @@ from google.genai import types
 # Disable Gemini 2.5 "thinking" for extraction tasks — it adds large latency on
 # big structured outputs (e.g. a full spreadsheet) with little accuracy gain.
 _NO_THINKING = types.ThinkingConfig(thinking_budget=0)
-
-from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +151,9 @@ async def parse_transcript(
         parsed = json.loads(raw)
     except json.JSONDecodeError as exc:
         logger.error("Failed to decode Gemini JSON response: %s", raw)
-        raise HTTPException(status_code=502, detail="Gemini returned invalid JSON") from exc
+        raise HTTPException(
+            status_code=502, detail="Gemini returned invalid JSON"
+        ) from exc
 
     if parsed.get("parse_error"):
         raise HTTPException(
@@ -272,7 +273,9 @@ async def extract_spreadsheet_sheet(grid_text: str) -> dict:
         return _strip_json(response.text)
     except json.JSONDecodeError as exc:
         logger.error("Bad import-sheet JSON: %s", response.text[:500])
-        raise HTTPException(status_code=502, detail="Could not read the spreadsheet") from exc
+        raise HTTPException(
+            status_code=502, detail="Could not read the spreadsheet"
+        ) from exc
 
 
 async def extract_photo(image_bytes: bytes, mime: str) -> dict:
