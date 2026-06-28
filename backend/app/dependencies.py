@@ -1,8 +1,10 @@
+import logging
 from typing import AsyncGenerator
 
+from app.database import AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import AsyncSessionLocal
+logger = logging.getLogger(__name__)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -11,6 +13,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
+            logger.exception("Database session error; rolling back transaction")
             await session.rollback()
             raise
         finally:

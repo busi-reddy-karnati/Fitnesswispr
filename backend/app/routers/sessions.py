@@ -2,11 +2,6 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
-
 from app.dependencies import get_db
 from app.models.device_context import DeviceContext
 from app.models.exercise import Exercise
@@ -14,6 +9,11 @@ from app.models.exercise_set import ExerciseSet
 from app.models.session import WorkoutSession
 from app.schemas.requests import CreateSessionRequest, UpdateSessionRequest
 from app.schemas.workout import WorkoutSessionSchema
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 router = APIRouter()
 
@@ -24,9 +24,7 @@ async def _get_session_or_404(
     result = await db.execute(
         select(WorkoutSession)
         .where(WorkoutSession.session_id == str(session_id))
-        .options(
-            selectinload(WorkoutSession.exercises).selectinload(Exercise.sets)
-        )
+        .options(selectinload(WorkoutSession.exercises).selectinload(Exercise.sets))
     )
     session = result.scalars().first()
     if session is None:
@@ -94,20 +92,23 @@ async def create_session(
             )
             db.add(ex_set)
 
-    # UPSERT device_context if body_weight_lbs is provided
+    # UPSERT device_context if body_weight_lbs is provided (atomic, no read-then-write race)
     if body.body_weight_lbs is not None:
-        result = await db.execute(
-            select(DeviceContext).where(DeviceContext.device_uuid == str(device_uuid))
-        )
-        ctx = result.scalars().first()
-        if ctx is None:
-            ctx = DeviceContext(
+        upsert_stmt = (
+            pg_insert(DeviceContext)
+            .values(
                 device_uuid=str(device_uuid),
                 last_body_weight_lbs=body.body_weight_lbs,
             )
-            db.add(ctx)
-        else:
-            ctx.last_body_weight_lbs = body.body_weight_lbs
+            .on_conflict_do_update(
+                index_elements=[DeviceContext.device_uuid],
+                set_={
+                    "last_body_weight_lbs": body.body_weight_lbs,
+                    "last_updated": func.now(),
+                },
+            )
+        )
+        await db.execute(upsert_stmt)
 
     await db.flush()
 
@@ -171,7 +172,9 @@ async def update_session(
         for ex_idx, ex_data in enumerate(body.exercises):
             exercise = Exercise(
                 session_id=workout.session_id,
-                exercise_order=ex_data.exercise_order if ex_data.exercise_order else ex_idx,
+                exercise_order=(
+                    ex_data.exercise_order if ex_data.exercise_order else ex_idx
+                ),
                 name=ex_data.name,
                 equipment=ex_data.equipment,
                 muscle_group=ex_data.muscle_group,

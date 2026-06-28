@@ -1,5 +1,8 @@
 import Foundation
+import OSLog
 import Security
+
+private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "Fitnesswispr", category: "AccountStore")
 
 struct AppleAuthRequest: Encodable {
     let identityToken: String
@@ -117,7 +120,10 @@ final class AccountStore: ObservableObject {
             kSecAttrAccount as String: key,
             kSecValueData as String: data
         ]
-        SecItemAdd(attributes as CFDictionary, nil)
+        let status = SecItemAdd(attributes as CFDictionary, nil)
+        if status != errSecSuccess {
+            logger.error("Keychain SecItemAdd failed with status: \(status)")
+        }
     }
 
     private static func delete(service: String, key: String) {
@@ -126,6 +132,9 @@ final class AccountStore: ObservableObject {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        if status != errSecSuccess && status != errSecItemNotFound {
+            logger.error("Keychain SecItemDelete failed with status: \(status)")
+        }
     }
 }

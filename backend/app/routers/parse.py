@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends
+import logging
 
 from app.ratelimit import enforce_llm_budget
 from app.schemas.requests import ParseRequest
 from app.schemas.responses import ParseResponse
 from app.services import gemini_service
+from fastapi import APIRouter, Depends
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -17,6 +19,8 @@ async def parse_workout(request: ParseRequest) -> ParseResponse:
     """
     Parse a voice transcript using Gemini without saving to DB.
     Returns a WorkoutSessionSchema-shaped response with session_id=null.
+    Exercises missing a non-empty ``name`` are silently dropped and logged
+    at WARNING level; they are never forwarded to the caller.
     """
     body_weight_lbs: float | None = request.context.get("body_weight_lbs")
     # The client passes its LOCAL today (YYYY-MM-DD) so relative dates like
@@ -30,10 +34,19 @@ async def parse_workout(request: ParseRequest) -> ParseResponse:
         today=today,
     )
 
-    # Normalise exercises: rename "sets" key inside each exercise if needed
+    # Normalise exercises: rename "sets" key inside each exercise if needed,
+    # and skip any malformed entries that are missing a non-empty name.
     exercises = parsed.get("exercises", [])
     normalised_exercises = []
     for idx, ex in enumerate(exercises):
+        name = (ex.get("name") or "").strip()
+        if not name:
+            logger.warning(
+                "Skipping malformed exercise at index %d: missing 'name' field. Entry: %s",
+                idx,
+                ex,
+            )
+            continue
         ex_copy = dict(ex)
         ex_copy.setdefault("exercise_order", idx)
         normalised_exercises.append(ex_copy)

@@ -4,6 +4,8 @@ import AVFoundation
 
 /// Lightweight on-device speech-to-text used by the assistant composer.
 /// Publishes a live `transcript` while recording.
+/// `start()` is a no-op if the recognizer is nil or reports `isAvailable == false`
+/// (e.g. device offline, locale unsupported, or permission not granted).
 @MainActor
 final class SpeechRecognizer: ObservableObject {
     @Published var transcript: String = ""
@@ -25,6 +27,7 @@ final class SpeechRecognizer: ObservableObject {
 
     func start() {
         guard !isRecording else { return }
+        guard let recognizer, recognizer.isAvailable else { return }
         transcript = ""
         isRecording = true
 
@@ -36,7 +39,7 @@ final class SpeechRecognizer: ObservableObject {
         request.shouldReportPartialResults = true
         self.request = request
 
-        task = recognizer?.recognitionTask(with: request) { [weak self] result, _ in
+        task = recognizer.recognitionTask(with: request) { [weak self] result, _ in
             guard let result else { return }
             Task { @MainActor [weak self] in
                 self?.transcript = result.bestTranscription.formattedString

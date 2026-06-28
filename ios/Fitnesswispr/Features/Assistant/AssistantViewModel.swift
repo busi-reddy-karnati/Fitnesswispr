@@ -1,6 +1,15 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Default clarification options
+
+private enum AssistantDefaults {
+    /// Fallback rep options when the user has no logged history.
+    static let defaultReps = ["8", "10", "12"]
+    /// Fallback set count options when the user has no logged history.
+    static let defaultSets = ["3", "4", "5"]
+}
+
 @MainActor
 final class AssistantViewModel: ObservableObject {
     @Published var messages: [ChatMessage] = []
@@ -419,10 +428,10 @@ final class AssistantViewModel: ObservableObject {
             return Array(opts)
         case .reps:
             let freq = frequentReps.filter { $0 > 0 }.prefix(3).map(String.init)
-            return freq.isEmpty ? ["8", "10", "12"] : Array(freq)
+            return freq.isEmpty ? AssistantDefaults.defaultReps : Array(freq)
         case .sets:
             let freq = frequentSetCounts.filter { $0 > 1 }.prefix(3).map(String.init)
-            return freq.isEmpty ? ["3", "4", "5"] : Array(freq)
+            return freq.isEmpty ? AssistantDefaults.defaultSets : Array(freq)
         }
     }
 
